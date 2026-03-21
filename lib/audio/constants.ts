@@ -606,6 +606,16 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
     supportedFormats: ['mp3', 'wav', 'pcm'],
   },
 
+  'fish-audio-tts': {
+    id: 'fish-audio-tts',
+    name: 'Fish Audio TTS',
+    requiresApiKey: true,
+    defaultBaseUrl: 'https://api.fish.audio/v1',
+    voices: [{ id: 'default', name: 'Default', language: 'multilingual', gender: 'neutral' }],
+    supportedFormats: ['mp3', 'wav', 'pcm'],
+    speedRange: { min: 0.5, max: 2.0, default: 1.0 },
+  },
+
   'browser-native-tts': {
     id: 'browser-native-tts',
     name: '浏览器原生 (Web Speech API)',
@@ -833,6 +843,7 @@ export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
   'azure-tts': 'zh-CN-XiaoxiaoNeural',
   'glm-tts': 'tongtong',
   'qwen-tts': 'Cherry',
+  'fish-audio-tts': 'default',
   'browser-native-tts': 'default',
 };
 

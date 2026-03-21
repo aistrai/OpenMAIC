@@ -130,6 +130,9 @@ export async function generateTTS(
     case 'qwen-tts':
       return await generateQwenTTS(config, text);
 
+    case 'fish-audio-tts':
+      return await generateFishAudioTTS(config, text);
+
     case 'browser-native-tts':
       throw new Error(
         'Browser Native TTS must be handled client-side using Web Speech API. This provider cannot be used on the server.',
@@ -313,6 +316,60 @@ async function generateQwenTTS(config: TTSModelConfig, text: string): Promise<TT
   return {
     audio: new Uint8Array(arrayBuffer),
     format: 'wav', // Qwen3 TTS returns WAV format
+  };
+}
+
+/**
+ * Fish Audio TTS implementation
+ * Docs: https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech
+ */
+async function generateFishAudioTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const baseUrl = config.baseUrl || TTS_PROVIDERS['fish-audio-tts'].defaultBaseUrl || '';
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  const endpoint = normalizedBaseUrl.endsWith('/v1')
+    ? `${normalizedBaseUrl}/tts`
+    : `${normalizedBaseUrl}/v1/tts`;
+
+  const speed = Math.max(0.5, Math.min(2.0, config.speed || 1.0));
+  const format = config.format || 'mp3';
+
+  const body: Record<string, unknown> = {
+    text,
+    format,
+    latency: 'normal',
+    prosody: {
+      speed,
+    },
+  };
+
+  // Fish Audio uses reference_id for cloned/selected voice models.
+  // Keep "default" as no reference to let server-side default voice apply.
+  if (config.voice && config.voice !== 'default') {
+    body.reference_id = config.voice;
+  }
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      model: 's2-pro',
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => response.statusText);
+    throw new Error(`Fish Audio TTS API error: ${errorText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    audio: new Uint8Array(arrayBuffer),
+    format,
   };
 }
 
