@@ -245,9 +245,18 @@ export function resolveBaseUrl(providerId: string, clientBaseUrl?: string): stri
   return getConfig().providers[providerId]?.baseUrl;
 }
 
-/** Resolve proxy URL for a provider (server config only) */
+/** Resolve proxy URL: provider config > GLOBAL_PROXY_URL > HTTPS_PROXY > HTTP_PROXY */
 export function resolveProxy(providerId: string): string | undefined {
-  return getConfig().providers[providerId]?.proxy;
+  return (
+    getConfig().providers[providerId]?.proxy ||
+    process.env.GLOBAL_PROXY_URL ||
+    process.env.global_proxy_url ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    undefined
+  );
 }
 
 // ---------------------------------------------------------------------------

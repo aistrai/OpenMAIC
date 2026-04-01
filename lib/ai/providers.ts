@@ -923,6 +923,65 @@ function getCompatThinkingBodyParams(
 }
 
 /**
+ * Resolve proxy URL for server-side model calls.
+ * Priority: explicit model config > GLOBAL_PROXY_URL > HTTPS_PROXY > HTTP_PROXY
+ */
+function resolveProxyUrl(explicitProxy?: string): string | undefined {
+  if (explicitProxy?.trim()) return explicitProxy.trim();
+  if (typeof window !== 'undefined') return undefined;
+
+  return (
+    process.env.GLOBAL_PROXY_URL ||
+    process.env.global_proxy_url ||
+    process.env.HTTPS_PROXY ||
+    process.env.https_proxy ||
+    process.env.HTTP_PROXY ||
+    process.env.http_proxy ||
+    undefined
+  );
+}
+
+const _proxyFetchCache = new Map<string, typeof fetch>();
+const _proxyUsageLogged = new Set<string>();
+
+function getProxiedFetch(proxyUrl: string): typeof fetch {
+  const cached = _proxyFetchCache.get(proxyUrl);
+  if (cached) return cached;
+
+  // Dynamic require to avoid bundling undici in client bundles.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { ProxyAgent, fetch: undiciFetch } = require('undici');
+  const agent = new ProxyAgent(proxyUrl);
+
+  const proxiedFetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+    undiciFetch(input as string, {
+      ...(init as Record<string, unknown>),
+      dispatcher: agent,
+    }).then((r: unknown) => r as Response)) as typeof fetch;
+
+  _proxyFetchCache.set(proxyUrl, proxiedFetch);
+  return proxiedFetch;
+}
+
+function getServerFetch(proxyUrl?: string): typeof fetch | undefined {
+  if (!proxyUrl || typeof window !== 'undefined') return undefined;
+  try {
+    return getProxiedFetch(proxyUrl);
+  } catch (e) {
+    log.warn(`Failed to initialize proxy fetch for ${proxyUrl}:`, e);
+    return undefined;
+  }
+}
+
+function logProxyUsageOnce(providerId: ProviderId, proxyUrl?: string): void {
+  if (!proxyUrl || typeof window !== 'undefined') return;
+  const key = `${providerId}|${proxyUrl}`;
+  if (_proxyUsageLogged.has(key)) return;
+  _proxyUsageLogged.add(key);
+  log.info(`Using proxy for provider "${providerId}": ${proxyUrl}`);
+}
+
+/**
  * Get a configured language model instance with its info
  * Accepts individual parameters for flexibility and security
  */
@@ -952,6 +1011,9 @@ export function getModel(config: ModelConfig): ModelWithInfo {
   // Resolve base URL: explicit > provider default > SDK default
   const provider = getProviderConfig(config.providerId);
   const effectiveBaseUrl = config.baseUrl || provider?.defaultBaseUrl || undefined;
+  const proxyUrl = resolveProxyUrl(config.proxy);
+  const serverFetch = getServerFetch(proxyUrl);
+  logProxyUsageOnce(config.providerId, proxyUrl);
 
   let model: LanguageModel;
 
@@ -962,31 +1024,31 @@ export function getModel(config: ModelConfig): ModelWithInfo {
         baseURL: effectiveBaseUrl,
       };
 
-      // For OpenAI-compatible providers (not native OpenAI), add a fetch
-      // wrapper that injects vendor-specific thinking params into the HTTP
-      // body. The thinking config is read from AsyncLocalStorage, set by
-      // callLLM / streamLLM at call time.
-      if (config.providerId !== 'openai') {
+      // For OpenAI-compatible providers, inject vendor-specific thinking params.
+      // If proxy is configured, also route through the proxy-enabled fetch.
+      if (config.providerId !== 'openai' || serverFetch) {
         const providerId = config.providerId;
         openaiOptions.fetch = async (url: RequestInfo | URL, init?: RequestInit) => {
-          // Read thinking config from globalThis (set by thinking-context.ts)
-          const thinkingCtx = (globalThis as Record<string, unknown>).__thinkingContext as
-            | { getStore?: () => unknown }
-            | undefined;
-          const thinking = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
-          if (thinking && init?.body && typeof init.body === 'string') {
-            const extra = getCompatThinkingBodyParams(providerId, thinking);
-            if (extra) {
-              try {
-                const body = JSON.parse(init.body);
-                Object.assign(body, extra);
-                init = { ...init, body: JSON.stringify(body) };
-              } catch {
-                /* leave body as-is */
+          let nextInit = init;
+          if (providerId !== 'openai' && init?.body && typeof init.body === 'string') {
+            const thinkingCtx = (globalThis as Record<string, unknown>).__thinkingContext as
+              | { getStore?: () => unknown }
+              | undefined;
+            const thinking = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
+            if (thinking) {
+              const extra = getCompatThinkingBodyParams(providerId, thinking);
+              if (extra) {
+                try {
+                  const body = JSON.parse(init.body);
+                  Object.assign(body, extra);
+                  nextInit = { ...init, body: JSON.stringify(body) };
+                } catch {
+                  /* leave body as-is */
+                }
               }
             }
           }
-          return globalThis.fetch(url, init);
+          return (serverFetch || globalThis.fetch)(url, nextInit);
         };
       }
 
@@ -996,10 +1058,12 @@ export function getModel(config: ModelConfig): ModelWithInfo {
     }
 
     case 'anthropic': {
-      const anthropic = createAnthropic({
+      const anthropicOptions: Parameters<typeof createAnthropic>[0] = {
         apiKey: effectiveApiKey,
         baseURL: effectiveBaseUrl,
-      });
+      };
+      if (serverFetch) anthropicOptions.fetch = serverFetch;
+      const anthropic = createAnthropic(anthropicOptions);
       model = anthropic.chat(config.modelId);
       break;
     }
@@ -1009,17 +1073,7 @@ export function getModel(config: ModelConfig): ModelWithInfo {
         apiKey: effectiveApiKey,
         baseURL: effectiveBaseUrl,
       };
-      if (config.proxy) {
-        // Dynamic require to avoid bundling undici on the client side
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        const { ProxyAgent, fetch: undiciFetch } = require('undici');
-        const agent = new ProxyAgent(config.proxy);
-        googleOptions.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
-          undiciFetch(input as string, {
-            ...(init as Record<string, unknown>),
-            dispatcher: agent,
-          }).then((r: unknown) => r as Response)) as typeof fetch;
-      }
+      if (serverFetch) googleOptions.fetch = serverFetch;
       const google = createGoogleGenerativeAI(googleOptions);
       model = google.chat(config.modelId);
       break;
