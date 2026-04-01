@@ -21,6 +21,7 @@ import { useAudioRecorder } from '@/lib/hooks/use-audio-recorder';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { toast } from 'sonner';
 import { useSettingsStore, PLAYBACK_SPEEDS } from '@/lib/store/settings';
+import { CLASSROOM_INTERACTION_ENABLED } from '@/lib/config/feature-flags';
 import { ProactiveCard } from '@/components/chat/proactive-card';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
@@ -141,6 +142,7 @@ export function Roundtable({
   const setTTSVolume = useSettingsStore((s) => s.setTTSVolume);
   const autoPlayLecture = useSettingsStore((s) => s.autoPlayLecture);
   const setAutoPlayLecture = useSettingsStore((s) => s.setAutoPlayLecture);
+  const classroomInteractionEnabled = CLASSROOM_INTERACTION_ENABLED;
   const playbackSpeed = useSettingsStore((s) => s.playbackSpeed);
   const setPlaybackSpeed = useSettingsStore((s) => s.setPlaybackSpeed);
   const [isInputOpen, setIsInputOpen] = useState(false);
@@ -244,6 +246,10 @@ export function Roundtable({
   // Audio recording
   const { isRecording, isProcessing, startRecording, stopRecording } = useAudioRecorder({
     onTranscription: (text) => {
+      if (!classroomInteractionEnabled) {
+        setIsVoiceOpen(false);
+        return;
+      }
       if (!text.trim()) {
         toast.info(t('roundtable.noSpeechDetected'));
         setIsVoiceOpen(false);
@@ -269,7 +275,18 @@ export function Roundtable({
     },
   });
 
+  // If interaction is disabled at runtime, immediately close local interaction UIs.
+  useEffect(() => {
+    if (classroomInteractionEnabled) return;
+    if (isRecording) {
+      stopRecording();
+    }
+    setIsInputOpen(false);
+    setIsVoiceOpen(false);
+  }, [classroomInteractionEnabled, isRecording, stopRecording]);
+
   const handleSendMessage = () => {
+    if (!classroomInteractionEnabled) return;
     if (!inputValue.trim() || isSendCooldown) return;
 
     setUserMessage(inputValue);
@@ -285,6 +302,7 @@ export function Roundtable({
   };
 
   const handleToggleInput = () => {
+    if (!classroomInteractionEnabled) return;
     if (isSendCooldown) return;
     if (!isInputOpen) {
       onInputActivate?.();
@@ -294,6 +312,7 @@ export function Roundtable({
   };
 
   const handleToggleVoice = () => {
+    if (!classroomInteractionEnabled) return;
     if (isVoiceOpen) {
       if (isRecording) {
         stopRecording();
@@ -530,7 +549,9 @@ export function Roundtable({
 
               {/* ProactiveCard from teacher avatar */}
               <AnimatePresence>
-                {discussionRequest && discussionRequest.agentId === teacherParticipant?.id && (
+                {classroomInteractionEnabled &&
+                  discussionRequest &&
+                  discussionRequest.agentId === teacherParticipant?.id && (
                   <ProactiveCard
                     action={discussionRequest}
                     mode={engineMode === 'paused' ? 'paused' : 'playback'}
@@ -1266,7 +1287,8 @@ export function Roundtable({
 
             {/* ProactiveCard for student/non-teacher agents — rendered via portal */}
             <AnimatePresence>
-              {discussionRequest &&
+              {classroomInteractionEnabled &&
+                discussionRequest &&
                 discussionRequest.agentId !== teacherParticipant?.id &&
                 (() => {
                   const matchedStudent = studentParticipants.find(
@@ -1328,10 +1350,10 @@ export function Roundtable({
                       e.stopPropagation();
                       if (asrEnabled) handleToggleVoice();
                     }}
-                    disabled={!asrEnabled}
+                    disabled={!classroomInteractionEnabled || !asrEnabled}
                     className={cn(
                       'w-8 h-8 rounded-full border flex items-center justify-center transition-all active:scale-95 shadow-sm',
-                      !asrEnabled
+                      !classroomInteractionEnabled || !asrEnabled
                         ? 'bg-gray-100 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
                         : isVoiceOpen
                           ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
@@ -1349,9 +1371,12 @@ export function Roundtable({
                       e.stopPropagation();
                       handleToggleInput();
                     }}
+                    disabled={!classroomInteractionEnabled}
                     className={cn(
                       'w-8 h-8 rounded-full border flex items-center justify-center transition-all active:scale-95 shadow-sm',
-                      isInputOpen
+                      !classroomInteractionEnabled
+                        ? 'bg-gray-100 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                        : isInputOpen
                         ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
                         : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-700',
                     )}
@@ -1364,9 +1389,13 @@ export function Roundtable({
 
             {/* User avatar (big, clickable to open input) */}
             <div
-              className="relative group cursor-pointer shrink-0"
+              className={cn(
+                'relative group shrink-0',
+                classroomInteractionEnabled ? 'cursor-pointer' : 'cursor-not-allowed',
+              )}
               onClick={(e) => {
                 e.stopPropagation();
+                if (!classroomInteractionEnabled) return;
                 handleToggleInput();
               }}
             >

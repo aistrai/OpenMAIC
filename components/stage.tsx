@@ -5,6 +5,7 @@ import { useStageStore } from '@/lib/store';
 import { PENDING_SCENE_ID } from '@/lib/store/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
 import { useSettingsStore } from '@/lib/store/settings';
+import { CLASSROOM_INTERACTION_ENABLED } from '@/lib/config/feature-flags';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { SceneSidebar } from './stage/scene-sidebar';
 import { Header } from './header';
@@ -56,6 +57,7 @@ export function Stage({
   const setChatAreaWidth = useSettingsStore((s) => s.setChatAreaWidth);
   const chatAreaCollapsed = useSettingsStore((s) => s.chatAreaCollapsed);
   const setChatAreaCollapsed = useSettingsStore((s) => s.setChatAreaCollapsed);
+  const classroomInteractionEnabled = CLASSROOM_INTERACTION_ENABLED;
 
   // PlaybackEngine state
   const [engineMode, setEngineMode] = useState<EngineMode>('idle');
@@ -310,6 +312,11 @@ export function Stage({
         }
       },
       onProactiveShow: (trigger) => {
+        if (!classroomInteractionEnabled) {
+          setDiscussionTrigger(null);
+          queueMicrotask(() => engineRef.current?.skipDiscussion());
+          return;
+        }
         if (!trigger.agentId) {
           // Mutate in-place so engine.currentTrigger also gets the agentId
           // (confirmDiscussion reads agentId from the same object reference)
@@ -321,6 +328,7 @@ export function Stage({
         setDiscussionTrigger(null);
       },
       onDiscussionConfirmed: (topic, prompt, agentId) => {
+        if (!classroomInteractionEnabled) return;
         // Start SSE discussion via ChatArea
         handleDiscussionSSE(topic, prompt, agentId);
       },
@@ -346,6 +354,7 @@ export function Stage({
         }
       },
       onUserInterrupt: (text) => {
+        if (!classroomInteractionEnabled) return;
         // User interrupted → start a discussion via chat
         chatAreaRef.current?.sendMessage(text);
       },
@@ -653,7 +662,8 @@ export function Stage({
   })();
 
   // Build discussion request for Roundtable ProactiveCard from trigger
-  const discussionRequest: DiscussionAction | null = discussionTrigger
+  const discussionRequest: DiscussionAction | null =
+    classroomInteractionEnabled && discussionTrigger
     ? {
         type: 'discussion',
         id: discussionTrigger.id,
@@ -759,6 +769,7 @@ export function Stage({
             isCueUser={isCueUser}
             isTopicPending={isTopicPending}
             onMessageSend={(msg) => {
+              if (!classroomInteractionEnabled) return;
               // Clear soft-paused state — user is continuing the topic
               if (isTopicPending) {
                 setIsTopicPending(false);
@@ -791,15 +802,18 @@ export function Stage({
               setThinkingState({ stage: 'director' });
             }}
             onDiscussionStart={() => {
+              if (!classroomInteractionEnabled) return;
               // User clicks "Join" on ProactiveCard
               engineRef.current?.confirmDiscussion();
             }}
             onDiscussionSkip={() => {
+              if (!classroomInteractionEnabled) return;
               // User clicks "Skip" on ProactiveCard
               engineRef.current?.skipDiscussion();
             }}
             onStopDiscussion={handleStopDiscussion}
             onInputActivate={async () => {
+              if (!classroomInteractionEnabled) return;
               // Soft-pause QA/Discussion if streaming (opening input = implicit pause)
               if (chatIsStreaming) {
                 await doSoftPause();
@@ -839,6 +853,7 @@ export function Stage({
         onActiveBubble={(id) => setActiveBubbleId(id)}
         currentSceneId={currentSceneId}
         onLiveSpeech={(text, agentId) => {
+          if (!classroomInteractionEnabled) return;
           // Capture epoch at call time — discard if scene has changed since
           const epoch = sceneEpochRef.current;
           // Use queueMicrotask to let any pending scene-switch reset settle first
@@ -868,6 +883,7 @@ export function Stage({
           });
         }}
         onThinking={(state) => {
+          if (!classroomInteractionEnabled) return;
           const epoch = sceneEpochRef.current;
           queueMicrotask(() => {
             if (sceneEpochRef.current !== epoch) return;
@@ -875,6 +891,7 @@ export function Stage({
           });
         }}
         onCueUser={(_fromAgentId, _prompt) => {
+          if (!classroomInteractionEnabled) return;
           setIsCueUser(true);
         }}
         onStopSession={doSessionCleanup}

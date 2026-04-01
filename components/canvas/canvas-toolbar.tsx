@@ -12,12 +12,12 @@ import {
   Volume1,
   Volume2,
   VolumeX,
-  Repeat,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStageStore } from '@/lib/store';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Switch } from '@/components/ui/switch';
 
 export interface CanvasToolbarProps {
   readonly currentSceneIndex: number;
@@ -329,32 +329,33 @@ export function CanvasToolbar({
             </button>
           )}
 
-          <CtrlDivider />
-
-          {/* Auto-play */}
+          {/* Auto-play switch */}
           {onToggleAutoPlay && (
-            <TooltipProvider delayDuration={0}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={onToggleAutoPlay}
-                    className={cn(
-                      ctrlBtn,
-                      'w-8 h-6',
-                      autoPlayLecture
-                        ? 'text-violet-600 dark:text-violet-400'
-                        : 'text-gray-500 dark:text-gray-400',
-                    )}
-                    aria-label="Auto-play"
-                  >
-                    <Repeat className="w-3.5 h-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="text-xs">
-                  {autoPlayLecture ? t('roundtable.autoPlayOff') : t('roundtable.autoPlay')}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <>
+              <CtrlDivider />
+              <div className="flex items-center gap-1.5 px-1">
+                <span
+                  className={cn(
+                    'text-[11px] font-medium select-none',
+                    autoPlayLecture
+                      ? 'text-violet-600 dark:text-violet-400'
+                      : 'text-gray-500 dark:text-gray-400',
+                  )}
+                >
+                  {t('roundtable.autoPlay')}
+                </span>
+                <Switch
+                  checked={!!autoPlayLecture}
+                  onCheckedChange={() => onToggleAutoPlay()}
+                  aria-label={t('roundtable.autoPlay')}
+                  className={cn(
+                    'h-4 w-7',
+                    'data-[state=checked]:bg-violet-500 dark:data-[state=checked]:bg-violet-400',
+                    'data-[state=unchecked]:bg-gray-300 dark:data-[state=unchecked]:bg-gray-600',
+                  )}
+                />
+              </div>
+            </>
           )}
 
           {/* Whiteboard */}

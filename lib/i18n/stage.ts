@@ -69,8 +69,9 @@ export const stageZhCN = {
     thinking: '思考中',
     yourTurn: '轮到你发言了',
     stopDiscussion: '结束讨论',
-    autoPlay: '自动播放',
-    autoPlayOff: '关闭自动播放',
+    autoPlay: '连播',
+    autoPlayOff: '关闭连播',
+    interaction: '互动',
     speed: '倍速',
   },
   pbl: {
@@ -217,6 +218,7 @@ export const stageEnUS = {
     stopDiscussion: 'Stop Discussion',
     autoPlay: 'Auto-play',
     autoPlayOff: 'Stop auto-play',
+    interaction: 'Interaction',
     speed: 'Speed',
   },
   pbl: {
