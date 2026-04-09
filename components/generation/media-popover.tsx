@@ -172,27 +172,21 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
-  const [fishSelfOnly, setFishSelfOnly] = useState(false);
-  const fishZhEnLabel = 'zh/en (Default)';
-  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
+  const fishZhEnLabel = 'zh + en (Default)';
 
   const filteredFishVoices = useMemo(
-    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),
-    [fishLanguageFilter, fishSelfOnly, fishVoices],
+    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
+    [fishLanguageFilter, fishVoices],
   );
 
-  const fetchFishVoices = useCallback(
-    async (selfOnlyOverride?: boolean) => {
-      const fishConfig = ttsProvidersConfig['fish-audio-tts'];
-      const voices = await fetchFishVoicesFromServer({
-        apiKey: fishConfig?.apiKey,
-        baseUrl: fishConfig?.baseUrl,
-        selfOnly: selfOnlyOverride ?? fishSelfOnly,
-      });
-      setFishVoices(voices);
-    },
-    [fishSelfOnly, setFishVoices, ttsProvidersConfig],
-  );
+  const fetchFishVoices = useCallback(async () => {
+    const fishConfig = ttsProvidersConfig['fish-audio-tts'];
+    const voices = await fetchFishVoicesFromServer({
+      apiKey: fishConfig?.apiKey,
+      baseUrl: fishConfig?.baseUrl,
+    });
+    setFishVoices(voices);
+  }, [setFishVoices, ttsProvidersConfig]);
 
   // ─── Dynamic browser voices ───
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -280,7 +274,6 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
           name: getVoiceDisplayName(v.name, locale),
           description: v.description,
           tags: v.tags,
-          self: v.self,
         })),
       });
     }
@@ -489,30 +482,11 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
+                      <SelectItem value="zh">zh only</SelectItem>
+                      <SelectItem value="en">en only</SelectItem>
                       <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[10px] text-muted-foreground">{fishSelfOnlyLabel}</span>
-                    <Switch
-                      checked={fishSelfOnly}
-                      onCheckedChange={(checked) => {
-                        setFishSelfOnly(checked);
-                        setLoadingFishVoices(true);
-                        void fetchFishVoices(checked)
-                          .catch((error) => {
-                            const message =
-                              error instanceof Error && error.message
-                                ? error.message
-                                : t('settings.fetchVoicesFailed');
-                            toast.error(`${t('settings.fetchVoicesFailed')}: ${message}`);
-                          })
-                          .finally(() => {
-                            setLoadingFishVoices(false);
-                          });
-                      }}
-                    />
-                  </div>
                 </div>
               )}
 
@@ -660,7 +634,6 @@ interface SelectGroupData {
     name: string;
     description?: string;
     tags?: string[];
-    self?: boolean;
   }>;
 }
 
@@ -704,7 +677,7 @@ function GroupedSelect({
           </span>
         </span>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="max-h-[65vh]">
         {groups.map((group, i) => (
           <Fragment key={`${group.groupId}-${i}`}>
             {i > 0 && <SelectSeparator />}
@@ -733,13 +706,8 @@ function GroupedSelect({
                         {item.description}
                       </div>
                     )}
-                    {(item.tags?.length || item.self) && (
+                    {item.tags?.length ? (
                       <div className="flex items-center gap-1 overflow-hidden">
-                        {item.self && (
-                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                            self
-                          </span>
-                        )}
                         {(item.tags || []).slice(0, 3).map((tag) => (
                           <span
                             key={`${item.id}-${tag}`}
@@ -749,7 +717,7 @@ function GroupedSelect({
                           </span>
                         ))}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 </SelectItem>
               ))}

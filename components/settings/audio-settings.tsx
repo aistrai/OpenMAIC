@@ -151,28 +151,24 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   // Language filter state
   const [selectedLocale, setSelectedLocale] = useState<string>('all');
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
-  const [fishSelfOnly, setFishSelfOnly] = useState(false);
   const [fetchingFishVoices, setFetchingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
-  const fishZhEnLabel = 'zh/en (Default)';
-  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
+  const fishZhEnLabel = 'zh + en (Default)';
 
   const filteredFishVoices = useMemo(
-    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),
-    [fishLanguageFilter, fishSelfOnly, fishVoices],
+    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
+    [fishLanguageFilter, fishVoices],
   );
 
-  const fetchFishVoices = useCallback(async (selfOnlyOverride?: boolean) => {
+  const fetchFishVoices = useCallback(async () => {
     if (fetchingFishVoices) return;
     setFetchingFishVoices(true);
 
     try {
       const fishConfig = ttsProvidersConfig['fish-audio-tts'];
-      const selfOnly = selfOnlyOverride ?? fishSelfOnly;
       const voices = await fetchFishVoicesFromServer({
         apiKey: fishConfig?.apiKey,
         baseUrl: fishConfig?.baseUrl,
-        selfOnly,
       });
 
       setFishVoices(voices);
@@ -184,7 +180,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
     } finally {
       setFetchingFishVoices(false);
     }
-  }, [fetchingFishVoices, fishSelfOnly, setFishVoices, t, ttsProvidersConfig]);
+  }, [fetchingFishVoices, setFishVoices, t, ttsProvidersConfig]);
 
   // Password visibility state
   const [showTTSApiKey, setShowTTSApiKey] = useState(false);
@@ -735,39 +731,25 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
               })()}
 
               {ttsProviderId === 'fish-audio-tts' && (
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => void fetchFishVoices()}
-                      disabled={fetchingFishVoices}
-                      className="gap-2"
-                    >
-                      {fetchingFishVoices ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Volume2 className="h-3.5 w-3.5" />
-                      )}
-                      {t('settings.fetchVoices')}
-                    </Button>
-                    <span className="text-xs text-muted-foreground">
-                      {t('settings.voicesFetched')}: {Math.max(0, filteredFishVoices.length - 1)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">
-                      {fishSelfOnlyLabel}
-                    </Label>
-                    <Switch
-                      checked={fishSelfOnly}
-                      onCheckedChange={(checked) => {
-                        setFishSelfOnly(checked);
-                        void fetchFishVoices(checked);
-                      }}
-                    />
-                  </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void fetchFishVoices()}
+                    disabled={fetchingFishVoices}
+                    className="gap-2"
+                  >
+                    {fetchingFishVoices ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Volume2 className="h-3.5 w-3.5" />
+                    )}
+                    {t('settings.fetchVoices')}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {t('settings.voicesFetched')}: {Math.max(0, filteredFishVoices.length - 1)}
+                  </span>
                 </div>
               )}
             </>
@@ -892,6 +874,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
+                    <SelectItem value="zh">zh only</SelectItem>
+                    <SelectItem value="en">en only</SelectItem>
                     <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -904,7 +888,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                 <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[420px]">
                   {(() => {
                     // For Azure TTS, use JSON data
                     if (ttsProviderId === 'azure-tts') {
@@ -931,13 +915,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                                 {voice.description}
                               </div>
                             )}
-                            {(voice.tags?.length || voice.self) && (
+                            {voice.tags?.length ? (
                               <div className="flex items-center gap-1 overflow-hidden">
-                                {voice.self && (
-                                  <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                                    self
-                                  </span>
-                                )}
                                 {(voice.tags || []).slice(0, 3).map((tag) => (
                                   <span
                                     key={`${voice.id}-${tag}`}
@@ -947,7 +926,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                                   </span>
                                 ))}
                               </div>
-                            )}
+                            ) : null}
                           </div>
                         </SelectItem>
                       ));

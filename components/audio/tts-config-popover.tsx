@@ -33,8 +33,7 @@ function getVoiceDisplayName(name: string, lang: string): string {
 
 export function TtsConfigPopover() {
   const { t, locale } = useI18n();
-  const fishZhEnLabel = 'zh/en (Default)';
-  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
+  const fishZhEnLabel = 'zh + en (Default)';
   const [open, setOpen] = useState(false);
   const { previewing, startPreview, stopPreview } = useTTSPreview();
 
@@ -48,13 +47,12 @@ export function TtsConfigPopover() {
   const fishVoices = useFishVoicesStore((s) => s.fishVoices);
   const setFishVoices = useFishVoicesStore((s) => s.setFishVoices);
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
-  const [fishSelfOnly, setFishSelfOnly] = useState(false);
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
 
   const filteredFishVoices = useMemo(
-    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),
-    [fishLanguageFilter, fishSelfOnly, fishVoices],
+    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
+    [fishLanguageFilter, fishVoices],
   );
 
   const voices = useMemo(
@@ -70,19 +68,15 @@ export function TtsConfigPopover() {
     [voices, locale],
   );
 
-  const fetchFishVoices = useCallback(
-    async (selfOnlyOverride?: boolean) => {
-      const fishConfig = ttsProvidersConfig['fish-audio-tts'];
-      await fetchFishVoicesFromServer({
-        apiKey: fishConfig?.apiKey,
-        baseUrl: fishConfig?.baseUrl,
-        selfOnly: selfOnlyOverride ?? fishSelfOnly,
-      }).then((list) => {
-        setFishVoices(list);
-      });
-    },
-    [fishSelfOnly, setFishVoices, ttsProvidersConfig],
-  );
+  const fetchFishVoices = useCallback(async () => {
+    const fishConfig = ttsProvidersConfig['fish-audio-tts'];
+    await fetchFishVoicesFromServer({
+      apiKey: fishConfig?.apiKey,
+      baseUrl: fishConfig?.baseUrl,
+    }).then((list) => {
+      setFishVoices(list);
+    });
+  }, [setFishVoices, ttsProvidersConfig]);
 
   useEffect(() => {
     if (!open) {
@@ -216,32 +210,11 @@ export function TtsConfigPopover() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
+                      <SelectItem value="zh">zh only</SelectItem>
+                      <SelectItem value="en">en only</SelectItem>
                       <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className="text-[11px] text-muted-foreground">
-                      {fishSelfOnlyLabel}
-                    </span>
-                    <Switch
-                      checked={fishSelfOnly}
-                      onCheckedChange={(checked) => {
-                        setFishSelfOnly(checked);
-                        setLoadingFishVoices(true);
-                        void fetchFishVoices(checked)
-                          .catch((error) => {
-                            const message =
-                              error instanceof Error && error.message
-                                ? error.message
-                                : t('settings.fetchVoicesFailed');
-                            toast.error(`${t('settings.fetchVoicesFailed')}: ${message}`);
-                          })
-                          .finally(() => {
-                            setLoadingFishVoices(false);
-                          });
-                      }}
-                    />
-                  </div>
                 </div>
               </div>
             )}
@@ -252,7 +225,7 @@ export function TtsConfigPopover() {
                 <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-[360px]">
                   {localizedVoices.map((v) => (
                     <SelectItem key={v.id} value={v.id} className="text-xs py-2">
                       <div className="min-w-0 space-y-1">
@@ -262,13 +235,8 @@ export function TtsConfigPopover() {
                             {v.description}
                           </div>
                         )}
-                        {(v.tags?.length || v.self) && (
+                        {v.tags?.length ? (
                           <div className="flex items-center gap-1 overflow-hidden">
-                            {v.self && (
-                              <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
-                                self
-                              </span>
-                            )}
                             {(v.tags || []).slice(0, 3).map((tag) => (
                               <span
                                 key={`${v.id}-${tag}`}
@@ -278,7 +246,7 @@ export function TtsConfigPopover() {
                               </span>
                             ))}
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     </SelectItem>
                   ))}
