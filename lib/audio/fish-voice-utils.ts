@@ -1,34 +1,38 @@
-import type { TTSVoiceInfo } from '@/lib/audio/types';
+﻿import type { TTSVoiceInfo } from '@/lib/audio/types';
 
 export type FishVoiceLanguageFilter = 'zh' | 'en' | 'other';
 
-const ZH_HINTS = ['zh', 'cn', 'chinese', 'mandarin', '中文', '普通话', '粤语', '國語', '国语'];
-const EN_HINTS = ['en', 'english', '英语', '英文'];
-const MULTILINGUAL_HINTS = ['multi', 'multilingual', 'bilingual', '多语', '多語'];
+function parseLanguageSignals(voice: TTSVoiceInfo): {
+  isZh: boolean;
+  isEn: boolean;
+  isMulti: boolean;
+} {
+  const language = (voice.language || '').toLowerCase();
+  const tokens = language.split(/[\s,;/|]+/).filter(Boolean);
 
-function hasAnyHint(input: string, hints: string[]): boolean {
-  return hints.some((hint) => input.includes(hint));
-}
+  const isZh =
+    tokens.some((token) =>
+      token === 'zh' ||
+      token.startsWith('zh-') ||
+      token === 'cn' ||
+      token === 'yue' ||
+      token === 'wuu' ||
+      token === 'mandarin' ||
+      token === 'chinese',
+    ) ||
+    /[\u4e00-\u9fff]/.test(voice.name || '');
 
-function buildSearchText(voice: TTSVoiceInfo): string {
-  const tagsText = Array.isArray(voice.tags) ? voice.tags.join(' ') : '';
-  return `${voice.language || ''} ${voice.name || ''} ${voice.description || ''} ${tagsText}`.toLowerCase();
-}
+  const isEn =
+    tokens.some((token) => token === 'en' || token.startsWith('en-') || token === 'english') ||
+    /\benglish\b/i.test(voice.name || '');
 
-function isMultilingual(input: string): boolean {
-  return hasAnyHint(input, MULTILINGUAL_HINTS);
-}
+  const isMulti =
+    tokens.some((token) =>
+      token.includes('multi') || token.includes('bilingual') || token.includes('polyglot'),
+    ) ||
+    /\b(multilingual|bilingual|multi-language)\b/i.test(voice.language || '');
 
-function isMatchZh(voice: TTSVoiceInfo): boolean {
-  const normalized = buildSearchText(voice);
-  if (!normalized.trim()) return false;
-  return isMultilingual(normalized) || hasAnyHint(normalized, ZH_HINTS);
-}
-
-function isMatchEn(voice: TTSVoiceInfo): boolean {
-  const normalized = buildSearchText(voice);
-  if (!normalized.trim()) return false;
-  return isMultilingual(normalized) || hasAnyHint(normalized, EN_HINTS);
+  return { isZh, isEn, isMulti };
 }
 
 export function filterFishVoices(
@@ -39,15 +43,15 @@ export function filterFishVoices(
 ): TTSVoiceInfo[] {
   return voices.filter((voice) => {
     if (voice.id === 'default') return true;
-    const isZh = isMatchZh(voice);
-    const isEn = isMatchEn(voice);
 
-    // Keep categories mutually exclusive:
-    // - Chinese only: zh=true, en=false
-    // - English only: en=true, zh=false
-    // - Other: overlap, multilingual, or no clear zh/en signal
-    if (options.languageFilter === 'zh') return isZh && !isEn;
-    if (options.languageFilter === 'en') return isEn && !isZh;
-    return (isZh && isEn) || (!isZh && !isEn);
+    const { isZh, isEn, isMulti } = parseLanguageSignals(voice);
+
+    if (options.languageFilter === 'zh') {
+      return isZh && !isEn && !isMulti;
+    }
+    if (options.languageFilter === 'en') {
+      return isEn && !isZh && !isMulti;
+    }
+    return isMulti || (isZh && isEn) || (!isZh && !isEn);
   });
 }

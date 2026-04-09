@@ -153,9 +153,9 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
   const [fetchingFishVoices, setFetchingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
-  const fishChineseLabel = 'Chinese';
-  const fishEnglishLabel = 'English';
-  const fishOtherLabel = 'Other';
+  const fishChineseLabel = '中文';
+  const fishEnglishLabel = '英文';
+  const fishOtherLabel = '其他';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
@@ -901,7 +901,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                 <SelectTrigger className="w-full">
                   <span className="truncate">{selectedVoiceLabel}</span>
                 </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
+                <SelectContent className="max-h-[320px]" style={{ maxHeight: 320 }}>
                   {(() => {
                     // For Azure TTS, use JSON data
                     if (ttsProviderId === 'azure-tts') {

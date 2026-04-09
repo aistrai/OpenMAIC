@@ -172,9 +172,9 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
-  const fishChineseLabel = 'Chinese';
-  const fishEnglishLabel = 'English';
-  const fishOtherLabel = 'Other';
+  const fishChineseLabel = '中文';
+  const fishEnglishLabel = '英文';
+  const fishOtherLabel = '其他';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
@@ -498,6 +498,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
                     groups={ttsGroups}
                     selectedGroupId={ttsProviderId}
                     selectedItemId={ttsVoice}
+                    showGroupInTrigger={false}
                     onSelect={(gid, iid) => {
                       if (gid !== ttsProviderId) {
                         setTTSProvider(gid as TTSProviderId);
@@ -642,11 +643,13 @@ function GroupedSelect({
   groups,
   selectedGroupId,
   selectedItemId,
+  showGroupInTrigger = true,
   onSelect,
 }: {
   groups: SelectGroupData[];
   selectedGroupId: string;
   selectedItemId: string;
+  showGroupInTrigger?: boolean;
   onSelect: (groupId: string, itemId: string) => void;
 }) {
   const composite = `${selectedGroupId}::${selectedItemId}`;
@@ -673,12 +676,18 @@ function GroupedSelect({
           {selectedGroup?.groupIcon && (
             <img src={selectedGroup.groupIcon} alt="" className="size-4 rounded-sm shrink-0" />
           )}
-          <span className="font-medium truncate">{selectedGroup?.groupName}</span>
-          <span className="text-muted-foreground/40">/</span>
-          <span className="text-muted-foreground truncate">{selectedItemName}</span>
+          {showGroupInTrigger ? (
+            <>
+              <span className="font-medium truncate">{selectedGroup?.groupName}</span>
+              <span className="text-muted-foreground/40">/</span>
+              <span className="text-muted-foreground truncate">{selectedItemName}</span>
+            </>
+          ) : (
+            <span className="text-muted-foreground truncate">{selectedItemName}</span>
+          )}
         </span>
       </SelectTrigger>
-      <SelectContent className="max-h-[320px]">
+      <SelectContent className="max-h-[320px]" style={{ maxHeight: 320 }}>
         {groups.map((group, i) => (
           <Fragment key={`${group.groupId}-${i}`}>
             {i > 0 && <SelectSeparator />}

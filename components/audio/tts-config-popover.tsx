@@ -33,9 +33,9 @@ function getVoiceDisplayName(name: string, lang: string): string {
 
 export function TtsConfigPopover() {
   const { t, locale } = useI18n();
-  const fishChineseLabel = 'Chinese';
-  const fishEnglishLabel = 'English';
-  const fishOtherLabel = 'Other';
+  const fishChineseLabel = '中文';
+  const fishEnglishLabel = '英文';
+  const fishOtherLabel = '其他';
   const [open, setOpen] = useState(false);
   const { previewing, startPreview, stopPreview } = useTTSPreview();
 
@@ -228,7 +228,7 @@ export function TtsConfigPopover() {
                 <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
                   <span className="truncate">{selectedVoiceLabel}</span>
                 </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
+                <SelectContent className="max-h-[320px]" style={{ maxHeight: 320 }}>
                   {localizedVoices.map((v) => (
                     <SelectItem key={v.id} value={v.id} className="text-xs py-2">
                       <div className="min-w-0 space-y-1">
