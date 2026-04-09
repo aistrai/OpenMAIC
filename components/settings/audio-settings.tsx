@@ -920,27 +920,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
 
                     if (ttsProviderId === 'fish-audio-tts') {
                       return filteredFishVoices.map((voice) => (
-                        <SelectItem key={voice.id} value={voice.id} className="py-2">
-                          <div className="min-w-0 space-y-1">
-                            <div className="truncate text-xs font-medium">{voice.name}</div>
-                            {voice.description && (
-                              <div className="truncate text-[11px] text-muted-foreground">
-                                {voice.description}
-                              </div>
-                            )}
-                            {voice.tags?.length ? (
-                              <div className="flex items-center gap-1 overflow-hidden">
-                                {(voice.tags || []).slice(0, 3).map((tag) => (
-                                  <span
-                                    key={`${voice.id}-${tag}`}
-                                    className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
+                        <SelectItem key={voice.id} value={voice.id}>
+                          {voice.name}
                         </SelectItem>
                       ));
                     }

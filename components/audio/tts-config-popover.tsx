@@ -230,27 +230,8 @@ export function TtsConfigPopover() {
                 </SelectTrigger>
                 <SelectContent className="max-h-[320px]" style={{ maxHeight: 320 }}>
                   {localizedVoices.map((v) => (
-                    <SelectItem key={v.id} value={v.id} className="text-xs py-2">
-                      <div className="min-w-0 space-y-1">
-                        <div className="truncate">{v.displayName}</div>
-                        {v.description && (
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            {v.description}
-                          </div>
-                        )}
-                        {v.tags?.length ? (
-                          <div className="flex items-center gap-1 overflow-hidden">
-                            {(v.tags || []).slice(0, 3).map((tag) => (
-                              <span
-                                key={`${v.id}-${tag}`}
-                                className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                    <SelectItem key={v.id} value={v.id} className="text-xs">
+                      {v.displayName}
                     </SelectItem>
                   ))}
                 </SelectContent>

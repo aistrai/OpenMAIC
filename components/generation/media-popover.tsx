@@ -274,8 +274,6 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         items: (p.id === 'fish-audio-tts' ? filteredFishVoices : getTTSVoices(p.id)).map((v) => ({
           id: v.id,
           name: getVoiceDisplayName(v.name, locale),
-          description: v.description,
-          tags: v.tags,
         })),
       });
     }
@@ -634,8 +632,6 @@ interface SelectGroupData {
   items: Array<{
     id: string;
     name: string;
-    description?: string;
-    tags?: string[];
   }>;
 }
 
@@ -707,28 +703,9 @@ function GroupedSelect({
                   key={`${group.groupId}::${item.id}`}
                   value={`${group.groupId}::${item.id}`}
                   disabled={!group.available}
-                  className="text-xs py-2"
+                  className="text-xs"
                 >
-                  <div className="min-w-0 space-y-1">
-                    <div className="truncate">{item.name}</div>
-                    {item.description && (
-                      <div className="truncate text-[11px] text-muted-foreground">
-                        {item.description}
-                      </div>
-                    )}
-                    {item.tags?.length ? (
-                      <div className="flex items-center gap-1 overflow-hidden">
-                        {(item.tags || []).slice(0, 3).map((tag) => (
-                          <span
-                            key={`${item.id}-${tag}`}
-                            className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
+                  {item.name}
                 </SelectItem>
               ))}
             </SelectGroup>
