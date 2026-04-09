@@ -33,7 +33,9 @@ function getVoiceDisplayName(name: string, lang: string): string {
 
 export function TtsConfigPopover() {
   const { t, locale } = useI18n();
-  const fishZhEnLabel = 'zh + en (Default)';
+  const fishChineseLabel = 'Chinese';
+  const fishEnglishLabel = 'English';
+  const fishOtherLabel = 'Other';
   const [open, setOpen] = useState(false);
   const { previewing, startPreview, stopPreview } = useTTSPreview();
 
@@ -46,7 +48,7 @@ export function TtsConfigPopover() {
   const setTTSVoice = useSettingsStore((s) => s.setTTSVoice);
   const fishVoices = useFishVoicesStore((s) => s.fishVoices);
   const setFishVoices = useFishVoicesStore((s) => s.setFishVoices);
-  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
+  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
 
@@ -67,6 +69,8 @@ export function TtsConfigPopover() {
       })),
     [voices, locale],
   );
+  const selectedVoiceLabel =
+    localizedVoices.find((voice) => voice.id === ttsVoice)?.displayName || ttsVoice;
 
   const fetchFishVoices = useCallback(async () => {
     const fishConfig = ttsProvidersConfig['fish-audio-tts'];
@@ -209,10 +213,9 @@ export function TtsConfigPopover() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
-                      <SelectItem value="zh">zh only</SelectItem>
-                      <SelectItem value="en">en only</SelectItem>
-                      <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
+                      <SelectItem value="zh">{fishChineseLabel}</SelectItem>
+                      <SelectItem value="en">{fishEnglishLabel}</SelectItem>
+                      <SelectItem value="other">{fishOtherLabel}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -223,9 +226,9 @@ export function TtsConfigPopover() {
             <div className="flex items-center gap-2">
               <Select value={ttsVoice} onValueChange={setTTSVoice}>
                 <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
-                  <SelectValue />
+                  <span className="truncate">{selectedVoiceLabel}</span>
                 </SelectTrigger>
-                <SelectContent className="max-h-[360px]">
+                <SelectContent className="max-h-[320px]">
                   {localizedVoices.map((v) => (
                     <SelectItem key={v.id} value={v.id} className="text-xs py-2">
                       <div className="min-w-0 space-y-1">

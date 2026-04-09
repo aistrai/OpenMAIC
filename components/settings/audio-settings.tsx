@@ -150,15 +150,29 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
 
   // Language filter state
   const [selectedLocale, setSelectedLocale] = useState<string>('all');
-  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
+  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
   const [fetchingFishVoices, setFetchingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
-  const fishZhEnLabel = 'zh + en (Default)';
+  const fishChineseLabel = 'Chinese';
+  const fishEnglishLabel = 'English';
+  const fishOtherLabel = 'Other';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
     [fishLanguageFilter, fishVoices],
   );
+  const selectedVoiceLabel = useMemo(() => {
+    if (ttsProviderId === 'azure-tts') {
+      const azureVoice = azureVoices.find((voice) => voice.ShortName === ttsVoice);
+      return azureVoice?.LocalName || ttsVoice;
+    }
+    if (ttsProviderId === 'fish-audio-tts') {
+      const fishVoice = filteredFishVoices.find((voice) => voice.id === ttsVoice);
+      return fishVoice?.name || ttsVoice;
+    }
+    const voice = getTTSVoices(ttsProviderId).find((item) => item.id === ttsVoice);
+    return voice?.name || ttsVoice;
+  }, [azureVoices, filteredFishVoices, ttsProviderId, ttsVoice]);
 
   const fetchFishVoices = useCallback(async () => {
     if (fetchingFishVoices) return;
@@ -873,10 +887,9 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
-                    <SelectItem value="zh">zh only</SelectItem>
-                    <SelectItem value="en">en only</SelectItem>
-                    <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
+                    <SelectItem value="zh">{fishChineseLabel}</SelectItem>
+                    <SelectItem value="en">{fishEnglishLabel}</SelectItem>
+                    <SelectItem value="other">{fishOtherLabel}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -886,9 +899,9 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
               <Label className="text-sm">{t('settings.ttsVoice')}</Label>
               <Select value={ttsVoice} onValueChange={handleTTSVoiceChange}>
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <span className="truncate">{selectedVoiceLabel}</span>
                 </SelectTrigger>
-                <SelectContent className="max-h-[420px]">
+                <SelectContent className="max-h-[320px]">
                   {(() => {
                     // For Azure TTS, use JSON data
                     if (ttsProviderId === 'azure-tts') {

@@ -1,6 +1,6 @@
 import type { TTSVoiceInfo } from '@/lib/audio/types';
 
-export type FishVoiceLanguageFilter = 'zh-en' | 'zh' | 'en' | 'all';
+export type FishVoiceLanguageFilter = 'zh' | 'en' | 'other';
 
 const ZH_HINTS = ['zh', 'cn', 'chinese', 'mandarin', '中文', '普通话', '粤语', '國語', '国语'];
 const EN_HINTS = ['en', 'english', '英语', '英文'];
@@ -39,9 +39,15 @@ export function filterFishVoices(
 ): TTSVoiceInfo[] {
   return voices.filter((voice) => {
     if (voice.id === 'default') return true;
-    if (options.languageFilter === 'zh-en') return isMatchZh(voice) || isMatchEn(voice);
-    if (options.languageFilter === 'zh') return isMatchZh(voice);
-    if (options.languageFilter === 'en') return isMatchEn(voice);
-    return true;
+    const isZh = isMatchZh(voice);
+    const isEn = isMatchEn(voice);
+
+    // Keep categories mutually exclusive:
+    // - Chinese only: zh=true, en=false
+    // - English only: en=true, zh=false
+    // - Other: overlap, multilingual, or no clear zh/en signal
+    if (options.languageFilter === 'zh') return isZh && !isEn;
+    if (options.languageFilter === 'en') return isEn && !isZh;
+    return (isZh && isEn) || (!isZh && !isEn);
   });
 }

@@ -171,8 +171,10 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const ttsSpeedRange = TTS_PROVIDERS[ttsProviderId]?.speedRange;
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
-  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
-  const fishZhEnLabel = 'zh + en (Default)';
+  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
+  const fishChineseLabel = 'Chinese';
+  const fishEnglishLabel = 'English';
+  const fishOtherLabel = 'Other';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
@@ -481,10 +483,9 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
-                      <SelectItem value="zh">zh only</SelectItem>
-                      <SelectItem value="en">en only</SelectItem>
-                      <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
+                      <SelectItem value="zh">{fishChineseLabel}</SelectItem>
+                      <SelectItem value="en">{fishEnglishLabel}</SelectItem>
+                      <SelectItem value="other">{fishOtherLabel}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -655,6 +656,8 @@ function GroupedSelect({
     groups.find(
       (g) => g.groupId === selectedGroupId && g.items.some((item) => item.id === selectedItemId),
     ) || groups.find((g) => g.groupId === selectedGroupId);
+  const selectedItemName =
+    selectedGroup?.items.find((item) => item.id === selectedItemId)?.name || selectedItemId;
 
   return (
     <Select
@@ -672,12 +675,10 @@ function GroupedSelect({
           )}
           <span className="font-medium truncate">{selectedGroup?.groupName}</span>
           <span className="text-muted-foreground/40">/</span>
-          <span className="text-muted-foreground truncate">
-            <SelectValue />
-          </span>
+          <span className="text-muted-foreground truncate">{selectedItemName}</span>
         </span>
       </SelectTrigger>
-      <SelectContent className="max-h-[65vh]">
+      <SelectContent className="max-h-[320px]">
         {groups.map((group, i) => (
           <Fragment key={`${group.groupId}-${i}`}>
             {i > 0 && <SelectSeparator />}
