@@ -15,22 +15,26 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useFishVoicesStore } from '@/lib/store/fish-voices';
 import {
   TTS_PROVIDERS,
   getTTSVoices,
   ASR_PROVIDERS,
   getASRSupportedLanguages,
 } from '@/lib/audio/constants';
+import { filterFishVoices, type FishVoiceLanguageFilter } from '@/lib/audio/fish-voice-utils';
 import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
 import { Volume2, Mic, MicOff, Loader2, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import azureVoicesData from '@/lib/audio/azure.json';
 import { createLogger } from '@/lib/logger';
+import { toast } from 'sonner';
 import {
   ensureVoicesLoaded,
   isBrowserTTSAbortError,
   playBrowserTTSPreview,
 } from '@/lib/audio/browser-tts-preview';
+import { fetchFishVoicesFromServer } from '@/lib/audio/fish-voices-client';
 
 const log = createLogger('AudioSettings');
 
@@ -70,7 +74,7 @@ interface AudioSettingsProps {
 }
 
 export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
 
   // TTS state
   const ttsProviderId = useSettingsStore((state) => state.ttsProviderId);
@@ -81,6 +85,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   const setTTSVoice = useSettingsStore((state) => state.setTTSVoice);
   const setTTSSpeed = useSettingsStore((state) => state.setTTSSpeed);
   const setTTSProviderConfig = useSettingsStore((state) => state.setTTSProviderConfig);
+  const fishVoices = useFishVoicesStore((state) => state.fishVoices);
+  const setFishVoices = useFishVoicesStore((state) => state.setFishVoices);
 
   // ASR state
   const asrProviderId = useSettingsStore((state) => state.asrProviderId);
@@ -142,12 +148,49 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
     onSave?.();
   };
 
+  // Language filter state
+  const [selectedLocale, setSelectedLocale] = useState<string>('all');
+  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
+  const [fishSelfOnly, setFishSelfOnly] = useState(false);
+  const [fetchingFishVoices, setFetchingFishVoices] = useState(false);
+  const fishAutoFetchAttemptedRef = useRef(false);
+  const fishZhEnLabel =
+    locale === 'zh-CN' ? '中文 + English（默认）' : 'Chinese + English (Default)';
+  const fishSelfOnlyLabel =
+    locale === 'zh-CN' ? '仅我的音色（self=true）' : 'Only My Voices (self=true)';
+
+  const filteredFishVoices = useMemo(
+    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),
+    [fishLanguageFilter, fishSelfOnly, fishVoices],
+  );
+
+  const fetchFishVoices = useCallback(async (selfOnlyOverride?: boolean) => {
+    if (fetchingFishVoices) return;
+    setFetchingFishVoices(true);
+
+    try {
+      const fishConfig = ttsProvidersConfig['fish-audio-tts'];
+      const selfOnly = selfOnlyOverride ?? fishSelfOnly;
+      const voices = await fetchFishVoicesFromServer({
+        apiKey: fishConfig?.apiKey,
+        baseUrl: fishConfig?.baseUrl,
+        selfOnly,
+      });
+
+      setFishVoices(voices);
+      toast.success(`${t('settings.voicesFetched')}: ${voices.length}`);
+    } catch (error) {
+      log.error('Failed to fetch Fish Audio voices:', error);
+      const reason = error instanceof Error ? error.message : t('settings.fetchVoicesFailed');
+      toast.error(`${t('settings.fetchVoicesFailed')}: ${reason}`);
+    } finally {
+      setFetchingFishVoices(false);
+    }
+  }, [fetchingFishVoices, fishSelfOnly, setFishVoices, t, ttsProvidersConfig]);
+
   // Password visibility state
   const [showTTSApiKey, setShowTTSApiKey] = useState(false);
   const [showASRApiKey, setShowASRApiKey] = useState(false);
-
-  // Language filter state
-  const [selectedLocale, setSelectedLocale] = useState<string>('all');
 
   // Test state
   const [testingTTS, setTestingTTS] = useState(false);
@@ -227,6 +270,17 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
     setTTSTestMessage('');
   }, [ttsProviderId, stopTTSPreview]);
 
+  // Auto-fetch Fish voices once when Fish provider is selected.
+  useEffect(() => {
+    if (ttsProviderId !== 'fish-audio-tts') {
+      fishAutoFetchAttemptedRef.current = false;
+      return;
+    }
+    if (fishVoices.length > 1 || fishAutoFetchAttemptedRef.current) return;
+    fishAutoFetchAttemptedRef.current = true;
+    void fetchFishVoices();
+  }, [ttsProviderId, fishVoices.length, fetchFishVoices]);
+
   // Initialize and reset TTS voice when provider changes
   useEffect(() => {
     let availableVoices: Array<{ id: string; name: string }> = [];
@@ -237,6 +291,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
         id: voice.ShortName,
         name: voice.LocalName,
       }));
+    } else if (ttsProviderId === 'fish-audio-tts') {
+      availableVoices = filteredFishVoices;
     } else {
       // Use static voices from constants
       availableVoices = getTTSVoices(ttsProviderId);
@@ -254,7 +310,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
         }
       }
     }
-  }, [ttsProviderId, ttsVoice, azureVoices, setTTSVoice]);
+  }, [ttsProviderId, ttsVoice, azureVoices, filteredFishVoices, setTTSVoice]);
 
   // Initialize and reset ASR language when provider changes
   useEffect(() => {
@@ -679,6 +735,43 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                   </p>
                 );
               })()}
+
+              {ttsProviderId === 'fish-audio-tts' && (
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void fetchFishVoices()}
+                      disabled={fetchingFishVoices}
+                      className="gap-2"
+                    >
+                      {fetchingFishVoices ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Volume2 className="h-3.5 w-3.5" />
+                      )}
+                      {t('settings.fetchVoices')}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {t('settings.voicesFetched')}: {Math.max(0, filteredFishVoices.length - 1)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs text-muted-foreground">
+                      {fishSelfOnlyLabel}
+                    </Label>
+                    <Switch
+                      checked={fishSelfOnly}
+                      onCheckedChange={(checked) => {
+                        setFishSelfOnly(checked);
+                        void fetchFishVoices(checked);
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -687,7 +780,9 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
             className="grid gap-4"
             style={{
               gridTemplateColumns:
-                ttsProviderId === 'azure-tts' ? '280px 280px 200px' : '280px 200px',
+                ttsProviderId === 'azure-tts' || ttsProviderId === 'fish-audio-tts'
+                  ? '280px 280px 200px'
+                  : '280px 200px',
             }}
           >
             {/* Language Filter for Azure TTS */}
@@ -786,6 +881,25 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
               </div>
             )}
 
+            {/* Language Filter for Fish Audio TTS */}
+            {ttsProviderId === 'fish-audio-tts' && (
+              <div className="space-y-2">
+                <Label className="text-sm">{t('settings.ttsLanguageFilter')}</Label>
+                <Select
+                  value={fishLanguageFilter}
+                  onValueChange={(value) => setFishLanguageFilter(value as FishVoiceLanguageFilter)}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
+                    <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label className="text-sm">{t('settings.ttsVoice')}</Label>
               <Select value={ttsVoice} onValueChange={handleTTSVoiceChange}>
@@ -805,6 +919,38 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
                       return filteredVoices.map((voice) => (
                         <SelectItem key={voice.ShortName} value={voice.ShortName}>
                           {voice.LocalName} ({voice.DisplayName})
+                        </SelectItem>
+                      ));
+                    }
+
+                    if (ttsProviderId === 'fish-audio-tts') {
+                      return filteredFishVoices.map((voice) => (
+                        <SelectItem key={voice.id} value={voice.id} className="py-2">
+                          <div className="min-w-0 space-y-1">
+                            <div className="truncate text-xs font-medium">{voice.name}</div>
+                            {voice.description && (
+                              <div className="truncate text-[11px] text-muted-foreground">
+                                {voice.description}
+                              </div>
+                            )}
+                            {(voice.tags?.length || voice.self) && (
+                              <div className="flex items-center gap-1 overflow-hidden">
+                                {voice.self && (
+                                  <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                                    self
+                                  </span>
+                                )}
+                                {(voice.tags || []).slice(0, 3).map((tag) => (
+                                  <span
+                                    key={`${voice.id}-${tag}`}
+                                    className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+                                  >
+                                    {tag}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </SelectItem>
                       ));
                     }

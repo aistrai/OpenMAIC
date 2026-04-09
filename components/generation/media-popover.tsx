@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, Fragment } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, Fragment } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Image as ImageIcon,
@@ -29,7 +29,9 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useFishVoicesStore } from '@/lib/store/fish-voices';
 import { useTTSPreview } from '@/lib/audio/use-tts-preview';
+import { fetchFishVoicesFromServer } from '@/lib/audio/fish-voices-client';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
 import { TTS_PROVIDERS, getTTSVoices } from '@/lib/audio/constants';
@@ -136,6 +138,8 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const setTTSProvider = useSettingsStore((s) => s.setTTSProvider);
   const setTTSVoice = useSettingsStore((s) => s.setTTSVoice);
   const setTTSSpeed = useSettingsStore((s) => s.setTTSSpeed);
+  const fishVoices = useFishVoicesStore((s) => s.fishVoices);
+  const setFishVoices = useFishVoicesStore((s) => s.setFishVoices);
 
   const asrProviderId = useSettingsStore((s) => s.asrProviderId);
   const asrLanguage = useSettingsStore((s) => s.asrLanguage);
@@ -164,6 +168,8 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   ) => !needsKey || !!configs[id]?.apiKey || !!configs[id]?.isServerConfigured;
 
   const ttsSpeedRange = TTS_PROVIDERS[ttsProviderId]?.speedRange;
+  const [loadingFishVoices, setLoadingFishVoices] = useState(false);
+  const fishAutoFetchAttemptedRef = useRef(false);
 
   // ─── Dynamic browser voices ───
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -246,7 +252,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         groupName: providerName,
         groupIcon: p.icon,
         available: true,
-        items: getTTSVoices(p.id).map((v) => ({
+        items: (p.id === 'fish-audio-tts' ? fishVoices : getTTSVoices(p.id)).map((v) => ({
           id: v.id,
           name: getVoiceDisplayName(v.name, locale),
         })),
@@ -254,7 +260,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     }
 
     return groups;
-  }, [ttsProvidersConfig, locale, browserVoices, t]);
+  }, [ttsProvidersConfig, locale, browserVoices, t, fishVoices]);
 
   // TTS preview
   const handlePreview = useCallback(async () => {
@@ -310,6 +316,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {
       stopPreview();
+      fishAutoFetchAttemptedRef.current = false;
     }
     setOpen(isOpen);
     if (isOpen) {
@@ -317,6 +324,39 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
       setActiveTab(first || 'image');
     }
   };
+
+  useEffect(() => {
+    if (!open || ttsProviderId !== 'fish-audio-tts') return;
+    if (fishVoices.length > 1 || fishAutoFetchAttemptedRef.current || loadingFishVoices) return;
+
+    fishAutoFetchAttemptedRef.current = true;
+    const fishConfig = ttsProvidersConfig['fish-audio-tts'];
+    setLoadingFishVoices(true);
+    void fetchFishVoicesFromServer({
+      apiKey: fishConfig?.apiKey,
+      baseUrl: fishConfig?.baseUrl,
+    })
+      .then((voices) => {
+        setFishVoices(voices);
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error && error.message ? error.message : t('settings.fetchVoicesFailed');
+        toast.error(`${t('settings.fetchVoicesFailed')}: ${message}`);
+      })
+      .finally(() => {
+        setLoadingFishVoices(false);
+      });
+  }, [
+    fishVoices.length,
+    loadingFishVoices,
+    open,
+    setFishVoices,
+    t,
+    ttsProviderId,
+    ttsProvidersConfig,
+    fishAutoFetchAttemptedRef,
+  ]);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>

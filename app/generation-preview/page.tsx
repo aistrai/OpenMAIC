@@ -21,6 +21,7 @@ import {
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { db } from '@/lib/utils/database';
 import { MAX_PDF_CONTENT_CHARS, MAX_VISION_IMAGES } from '@/lib/constants/generation';
+import { fetchSceneContentWithPolling } from '@/lib/generation/scene-content-client';
 import { nanoid } from 'nanoid';
 import type { Stage } from '@/lib/types/stage';
 import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
@@ -593,10 +594,8 @@ function GenerationPreviewContent() {
       const firstOutline = outlines[0];
 
       // Step 2: Generate content (currentStepIndex is already 2)
-      const contentResp = await fetch('/api/generate/scene-content', {
-        method: 'POST',
-        headers: getApiHeaders(),
-        body: JSON.stringify({
+      const contentData = await fetchSceneContentWithPolling(
+        {
           outline: firstOutline,
           allOutlines: outlines,
           pdfImages: currentSession.pdfImages,
@@ -604,16 +603,11 @@ function GenerationPreviewContent() {
           stageInfo,
           stageId: stage.id,
           agents,
-        }),
+        },
+        getApiHeaders(),
         signal,
-      });
+      );
 
-      if (!contentResp.ok) {
-        const errorData = await contentResp.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(errorData.error || t('generation.sceneGenerateFailed'));
-      }
-
-      const contentData = await contentResp.json();
       if (!contentData.success || !contentData.content) {
         throw new Error(contentData.error || t('generation.sceneGenerateFailed'));
       }

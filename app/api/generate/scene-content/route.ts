@@ -3,10 +3,11 @@
  *
  * Generates scene content (slides/quiz/interactive/pbl) from an outline.
  * This is the first half of the two-step scene generation pipeline.
- * Does NOT generate actions — use /api/generate/scene-actions for that.
+ * Does NOT generate actions. Use /api/generate/scene-actions for that.
  */
 
-import { NextRequest } from 'next/server';
+import { after, NextRequest } from 'next/server';
+import { nanoid } from 'nanoid';
 import { callLLM } from '@/lib/ai/llm';
 import {
   applyOutlineFallbacks,
@@ -18,10 +19,90 @@ import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generatio
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { resolveModelFromHeaders } from '@/lib/server/resolve-model';
+import { buildRequestOrigin } from '@/lib/server/classroom-storage';
+import {
+  createSceneContentGenerationJob,
+  markSceneContentGenerationJobFailed,
+  markSceneContentGenerationJobRunning,
+  markSceneContentGenerationJobSucceeded,
+} from '@/lib/server/scene-content-job-store';
 
 const log = createLogger('Scene Content API');
 
 export const maxDuration = 300;
+const SCENE_CONTENT_JOB_HEADER = 'x-scene-content-job';
+const SCENE_CONTENT_POLL_INTERVAL_MS = 2500;
+
+type ResolvedSceneModel = ReturnType<typeof resolveModelFromHeaders>;
+
+function shouldUseAsyncJob(req: NextRequest): boolean {
+  const rawValue = req.headers.get(SCENE_CONTENT_JOB_HEADER);
+  if (!rawValue) return false;
+  const normalized = rawValue.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+async function runSceneContentGeneration(params: {
+  effectiveOutline: SceneOutline;
+  assignedImages?: PdfImage[];
+  imageMapping?: ImageMapping;
+  agents?: AgentInfo[];
+  modelContext: ResolvedSceneModel;
+}): Promise<unknown> {
+  const { effectiveOutline, assignedImages, imageMapping, agents, modelContext } = params;
+  const { model: languageModel, modelInfo } = modelContext;
+  const hasVision = !!modelInfo?.capabilities?.vision;
+
+  const aiCall = async (
+    systemPrompt: string,
+    userPrompt: string,
+    images?: Array<{ id: string; src: string }>,
+  ): Promise<string> => {
+    if (images?.length && hasVision) {
+      const result = await callLLM(
+        {
+          model: languageModel,
+          system: systemPrompt,
+          messages: [
+            {
+              role: 'user' as const,
+              content: buildVisionUserContent(userPrompt, images),
+            },
+          ],
+          maxOutputTokens: modelInfo?.outputWindow,
+        },
+        'scene-content',
+      );
+      return result.text;
+    }
+
+    const result = await callLLM(
+      {
+        model: languageModel,
+        system: systemPrompt,
+        prompt: userPrompt,
+        maxOutputTokens: modelInfo?.outputWindow,
+      },
+      'scene-content',
+    );
+    return result.text;
+  };
+
+  // Media generation is handled client-side in parallel (media-orchestrator.ts).
+  // Placeholder IDs (gen_img_1, gen_vid_1) should be preserved in generated elements.
+  const generatedMediaMapping: ImageMapping = {};
+
+  return generateSceneContent(
+    effectiveOutline,
+    aiCall,
+    assignedImages,
+    imageMapping,
+    effectiveOutline.type === 'pbl' ? languageModel : undefined,
+    hasVision,
+    generatedMediaMapping,
+    agents,
+  );
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -49,7 +130,6 @@ export async function POST(req: NextRequest) {
       agents?: AgentInfo[];
     };
 
-    // Validate required fields
     if (!rawOutline) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'outline is required');
     }
@@ -64,57 +144,16 @@ export async function POST(req: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'stageId is required');
     }
 
-    // Ensure outline has language from stageInfo (fallback for older outlines)
     const outline: SceneOutline = {
       ...rawOutline,
       language: rawOutline.language || (stageInfo?.language as 'zh-CN' | 'en-US') || 'zh-CN',
     };
 
-    // ── Model resolution from request headers ──
-    const { model: languageModel, modelInfo, modelString } = resolveModelFromHeaders(req);
+    const modelContext = resolveModelFromHeaders(req);
+    const { modelString } = modelContext;
 
-    // Detect vision capability
-    const hasVision = !!modelInfo?.capabilities?.vision;
+    const effectiveOutline = applyOutlineFallbacks(outline, !!modelContext.model);
 
-    // Vision-aware AI call function
-    const aiCall = async (
-      systemPrompt: string,
-      userPrompt: string,
-      images?: Array<{ id: string; src: string }>,
-    ): Promise<string> => {
-      if (images?.length && hasVision) {
-        const result = await callLLM(
-          {
-            model: languageModel,
-            system: systemPrompt,
-            messages: [
-              {
-                role: 'user' as const,
-                content: buildVisionUserContent(userPrompt, images),
-              },
-            ],
-            maxOutputTokens: modelInfo?.outputWindow,
-          },
-          'scene-content',
-        );
-        return result.text;
-      }
-      const result = await callLLM(
-        {
-          model: languageModel,
-          system: systemPrompt,
-          prompt: userPrompt,
-          maxOutputTokens: modelInfo?.outputWindow,
-        },
-        'scene-content',
-      );
-      return result.text;
-    };
-
-    // ── Apply fallbacks ──
-    const effectiveOutline = applyOutlineFallbacks(outline, !!languageModel);
-
-    // ── Filter images assigned to this outline ──
     let assignedImages: PdfImage[] | undefined;
     if (
       pdfImages &&
@@ -126,30 +165,79 @@ export async function POST(req: NextRequest) {
       assignedImages = pdfImages.filter((img) => suggestedIds.has(img.id));
     }
 
-    // ── Media generation is handled client-side in parallel (media-orchestrator.ts) ──
-    // The content generator receives placeholder IDs (gen_img_1, gen_vid_1) as-is.
-    // resolveImageIds() in generation-pipeline.ts will keep these placeholders in elements.
-    const generatedMediaMapping: ImageMapping = {};
+    if (shouldUseAsyncJob(req)) {
+      const jobId = nanoid(10);
+      const baseUrl = buildRequestOrigin(req);
+      const pollUrl = `${baseUrl}/api/generate/scene-content/${jobId}`;
 
-    // ── Generate content ──
+      const job = await createSceneContentGenerationJob(jobId, {
+        stageId,
+        outlineId: effectiveOutline.id,
+        outlineTitle: effectiveOutline.title,
+        outlineType: effectiveOutline.type,
+        model: modelString,
+      });
+
+      after(async () => {
+        try {
+          await markSceneContentGenerationJobRunning(jobId);
+          log.info(
+            `[job=${jobId}] Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
+          );
+
+          const content = await runSceneContentGeneration({
+            effectiveOutline,
+            assignedImages,
+            imageMapping,
+            agents,
+            modelContext,
+          });
+
+          if (!content) {
+            throw new Error(`Failed to generate content: ${effectiveOutline.title}`);
+          }
+
+          await markSceneContentGenerationJobSucceeded(jobId, { content, effectiveOutline });
+          log.info(`[job=${jobId}] Content generated successfully: "${effectiveOutline.title}"`);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          log.error(`[job=${jobId}] Scene content generation failed:`, error);
+          try {
+            await markSceneContentGenerationJobFailed(jobId, message);
+          } catch (markFailedError) {
+            log.error(`[job=${jobId}] Failed to persist failed status:`, markFailedError);
+          }
+        }
+      });
+
+      return apiSuccess(
+        {
+          jobId,
+          status: job.status,
+          progress: job.progress,
+          message: job.message,
+          pollUrl,
+          pollIntervalMs: SCENE_CONTENT_POLL_INTERVAL_MS,
+          done: false,
+        },
+        202,
+      );
+    }
+
     log.info(
       `Generating content: "${effectiveOutline.title}" (${effectiveOutline.type}) [model=${modelString}]`,
     );
 
-    const content = await generateSceneContent(
+    const content = await runSceneContentGeneration({
       effectiveOutline,
-      aiCall,
       assignedImages,
       imageMapping,
-      effectiveOutline.type === 'pbl' ? languageModel : undefined,
-      hasVision,
-      generatedMediaMapping,
       agents,
-    );
+      modelContext,
+    });
 
     if (!content) {
       log.error(`Failed to generate content for: "${effectiveOutline.title}"`);
-
       return apiError(
         'GENERATION_FAILED',
         500,
@@ -158,7 +246,6 @@ export async function POST(req: NextRequest) {
     }
 
     log.info(`Content generated successfully: "${effectiveOutline.title}"`);
-
     return apiSuccess({ content, effectiveOutline });
   } catch (error) {
     log.error('Scene content generation error:', error);

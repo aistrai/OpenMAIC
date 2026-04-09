@@ -20,6 +20,8 @@ const log = createLogger('ProxyFetch');
 
 function getProxyUrl(): string | undefined {
   return (
+    process.env.GLOBAL_PROXY_URL ||
+    process.env.global_proxy_url ||
     process.env.https_proxy ||
     process.env.HTTPS_PROXY ||
     process.env.http_proxy ||

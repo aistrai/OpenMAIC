@@ -12,16 +12,15 @@ import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
+import {
+  fetchSceneContentWithPolling,
+  type SceneContentRequestParams,
+} from '@/lib/generation/scene-content-client';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('SceneGenerator');
 
-interface SceneContentResult {
-  success: boolean;
-  content?: unknown;
-  effectiveOutline?: SceneOutline;
-  error?: string;
-}
+type SceneContentResult = Awaited<ReturnType<typeof fetchSceneContentWithPolling>>;
 
 interface SceneActionsResult {
   success: boolean;
@@ -61,35 +60,10 @@ function getApiHeaders(): HeadersInit {
 
 /** Call POST /api/generate/scene-content (step 1) */
 async function fetchSceneContent(
-  params: {
-    outline: SceneOutline;
-    allOutlines: SceneOutline[];
-    stageId: string;
-    pdfImages?: PdfImage[];
-    imageMapping?: ImageMapping;
-    stageInfo: {
-      name: string;
-      description?: string;
-      language?: string;
-      style?: string;
-    };
-    agents?: AgentInfo[];
-  },
+  params: SceneContentRequestParams,
   signal?: AbortSignal,
 ): Promise<SceneContentResult> {
-  const response = await fetch('/api/generate/scene-content', {
-    method: 'POST',
-    headers: getApiHeaders(),
-    body: JSON.stringify(params),
-    signal,
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({ error: 'Request failed' }));
-    return { success: false, error: data.error || `HTTP ${response.status}` };
-  }
-
-  return response.json();
+  return fetchSceneContentWithPolling(params, getApiHeaders(), signal);
 }
 
 /** Call POST /api/generate/scene-actions (step 2) */

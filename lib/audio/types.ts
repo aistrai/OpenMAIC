@@ -100,6 +100,8 @@ export interface TTSVoiceInfo {
   localeName?: string; // Language name in its native script (e.g., "中文（简体，中国）", "日本語")
   gender?: 'male' | 'female' | 'neutral';
   description?: string;
+  tags?: string[];
+  self?: boolean;
 }
 
 /**
