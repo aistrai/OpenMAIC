@@ -33,10 +33,8 @@ function getVoiceDisplayName(name: string, lang: string): string {
 
 export function TtsConfigPopover() {
   const { t, locale } = useI18n();
-  const fishZhEnLabel =
-    locale === 'zh-CN' ? '中文 + English（默认）' : 'Chinese + English (Default)';
-  const fishSelfOnlyLabel =
-    locale === 'zh-CN' ? '仅我的音色（self=true）' : 'Only My Voices (self=true)';
+  const fishZhEnLabel = 'zh/en (Default)';
+  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
   const [open, setOpen] = useState(false);
   const { previewing, startPreview, stopPreview } = useTTSPreview();
 

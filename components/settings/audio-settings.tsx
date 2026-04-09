@@ -74,7 +74,7 @@ interface AudioSettingsProps {
 }
 
 export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
-  const { t, locale } = useI18n();
+  const { t } = useI18n();
 
   // TTS state
   const ttsProviderId = useSettingsStore((state) => state.ttsProviderId);
@@ -154,10 +154,8 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   const [fishSelfOnly, setFishSelfOnly] = useState(false);
   const [fetchingFishVoices, setFetchingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
-  const fishZhEnLabel =
-    locale === 'zh-CN' ? '中文 + English（默认）' : 'Chinese + English (Default)';
-  const fishSelfOnlyLabel =
-    locale === 'zh-CN' ? '仅我的音色（self=true）' : 'Only My Voices (self=true)';
+  const fishZhEnLabel = 'zh/en (Default)';
+  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),

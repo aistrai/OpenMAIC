@@ -32,6 +32,7 @@ import { useSettingsStore } from '@/lib/store/settings';
 import { useFishVoicesStore } from '@/lib/store/fish-voices';
 import { useTTSPreview } from '@/lib/audio/use-tts-preview';
 import { fetchFishVoicesFromServer } from '@/lib/audio/fish-voices-client';
+import { filterFishVoices, type FishVoiceLanguageFilter } from '@/lib/audio/fish-voice-utils';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
 import { TTS_PROVIDERS, getTTSVoices } from '@/lib/audio/constants';
@@ -170,6 +171,28 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const ttsSpeedRange = TTS_PROVIDERS[ttsProviderId]?.speedRange;
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
+  const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh-en');
+  const [fishSelfOnly, setFishSelfOnly] = useState(false);
+  const fishZhEnLabel = 'zh/en (Default)';
+  const fishSelfOnlyLabel = 'Only My Voices (self=true)';
+
+  const filteredFishVoices = useMemo(
+    () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter, selfOnly: fishSelfOnly }),
+    [fishLanguageFilter, fishSelfOnly, fishVoices],
+  );
+
+  const fetchFishVoices = useCallback(
+    async (selfOnlyOverride?: boolean) => {
+      const fishConfig = ttsProvidersConfig['fish-audio-tts'];
+      const voices = await fetchFishVoicesFromServer({
+        apiKey: fishConfig?.apiKey,
+        baseUrl: fishConfig?.baseUrl,
+        selfOnly: selfOnlyOverride ?? fishSelfOnly,
+      });
+      setFishVoices(voices);
+    },
+    [fishSelfOnly, setFishVoices, ttsProvidersConfig],
+  );
 
   // ─── Dynamic browser voices ───
   const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -252,15 +275,18 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         groupName: providerName,
         groupIcon: p.icon,
         available: true,
-        items: (p.id === 'fish-audio-tts' ? fishVoices : getTTSVoices(p.id)).map((v) => ({
+        items: (p.id === 'fish-audio-tts' ? filteredFishVoices : getTTSVoices(p.id)).map((v) => ({
           id: v.id,
           name: getVoiceDisplayName(v.name, locale),
+          description: v.description,
+          tags: v.tags,
+          self: v.self,
         })),
       });
     }
 
     return groups;
-  }, [ttsProvidersConfig, locale, browserVoices, t, fishVoices]);
+  }, [ttsProvidersConfig, locale, browserVoices, t, filteredFishVoices]);
 
   // TTS preview
   const handlePreview = useCallback(async () => {
@@ -330,15 +356,8 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     if (fishVoices.length > 1 || fishAutoFetchAttemptedRef.current || loadingFishVoices) return;
 
     fishAutoFetchAttemptedRef.current = true;
-    const fishConfig = ttsProvidersConfig['fish-audio-tts'];
     setLoadingFishVoices(true);
-    void fetchFishVoicesFromServer({
-      apiKey: fishConfig?.apiKey,
-      baseUrl: fishConfig?.baseUrl,
-    })
-      .then((voices) => {
-        setFishVoices(voices);
-      })
+    void fetchFishVoices()
       .catch((error) => {
         const message =
           error instanceof Error && error.message ? error.message : t('settings.fetchVoicesFailed');
@@ -348,15 +367,20 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         setLoadingFishVoices(false);
       });
   }, [
+    fetchFishVoices,
     fishVoices.length,
     loadingFishVoices,
     open,
-    setFishVoices,
     t,
     ttsProviderId,
-    ttsProvidersConfig,
-    fishAutoFetchAttemptedRef,
   ]);
+
+  useEffect(() => {
+    if (ttsProviderId !== 'fish-audio-tts') return;
+    if (!filteredFishVoices.some((voice) => voice.id === ttsVoice) && filteredFishVoices.length > 0) {
+      setTTSVoice(filteredFishVoices[0].id);
+    }
+  }, [filteredFishVoices, setTTSVoice, ttsProviderId, ttsVoice]);
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
@@ -454,6 +478,44 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
               enabled={ttsEnabled}
               onToggle={setTTSEnabled}
             >
+              {ttsProviderId === 'fish-audio-tts' && (
+                <div className="flex items-center gap-2 pb-2">
+                  <Select
+                    value={fishLanguageFilter}
+                    onValueChange={(value) => setFishLanguageFilter(value as FishVoiceLanguageFilter)}
+                  >
+                    <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="zh-en">{fishZhEnLabel}</SelectItem>
+                      <SelectItem value="all">{t('settings.allLanguages')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">{fishSelfOnlyLabel}</span>
+                    <Switch
+                      checked={fishSelfOnly}
+                      onCheckedChange={(checked) => {
+                        setFishSelfOnly(checked);
+                        setLoadingFishVoices(true);
+                        void fetchFishVoices(checked)
+                          .catch((error) => {
+                            const message =
+                              error instanceof Error && error.message
+                                ? error.message
+                                : t('settings.fetchVoicesFailed');
+                            toast.error(`${t('settings.fetchVoicesFailed')}: ${message}`);
+                          })
+                          .finally(() => {
+                            setLoadingFishVoices(false);
+                          });
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Provider + Voice grouped select + preview */}
               <div className="flex items-center gap-2">
                 <div className="flex-1 min-w-0">
@@ -593,7 +655,13 @@ interface SelectGroupData {
   groupName: string;
   groupIcon?: string;
   available: boolean;
-  items: Array<{ id: string; name: string }>;
+  items: Array<{
+    id: string;
+    name: string;
+    description?: string;
+    tags?: string[];
+    self?: boolean;
+  }>;
 }
 
 function GroupedSelect({
@@ -656,9 +724,33 @@ function GroupedSelect({
                   key={`${group.groupId}::${item.id}`}
                   value={`${group.groupId}::${item.id}`}
                   disabled={!group.available}
-                  className="text-xs"
+                  className="text-xs py-2"
                 >
-                  {item.name}
+                  <div className="min-w-0 space-y-1">
+                    <div className="truncate">{item.name}</div>
+                    {item.description && (
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {item.description}
+                      </div>
+                    )}
+                    {(item.tags?.length || item.self) && (
+                      <div className="flex items-center gap-1 overflow-hidden">
+                        {item.self && (
+                          <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground">
+                            self
+                          </span>
+                        )}
+                        {(item.tags || []).slice(0, 3).map((tag) => (
+                          <span
+                            key={`${item.id}-${tag}`}
+                            className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] leading-none text-muted-foreground"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </SelectItem>
               ))}
             </SelectGroup>
