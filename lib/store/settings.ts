@@ -9,7 +9,7 @@ import type { ProviderId } from '@/lib/ai/providers';
 import type { ProvidersConfig } from '@/lib/types/settings';
 import { PROVIDERS } from '@/lib/ai/providers';
 import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
-import { ASR_PROVIDERS, DEFAULT_TTS_VOICES, TTS_PROVIDERS } from '@/lib/audio/constants';
+import { ASR_PROVIDERS, TTS_PROVIDERS } from '@/lib/audio/constants';
 import { PDF_PROVIDERS } from '@/lib/pdf/constants';
 import type { PDFProviderId } from '@/lib/pdf/types';
 import type { ImageProviderId, VideoProviderId } from '@/lib/media/types';
@@ -20,6 +20,8 @@ import type { WebSearchProviderId } from '@/lib/web-search/types';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('Settings');
+const FORCED_TTS_PROVIDER: TTSProviderId = 'fish-audio-tts';
+const FORCED_TTS_VOICE = 'default';
 
 /** Available playback speed tiers */
 export const PLAYBACK_SPEEDS = [1, 1.25, 1.5, 2] as const;
@@ -256,18 +258,18 @@ const getDefaultProvidersConfig = (): ProvidersConfig => {
 
 // Initialize default audio config
 const getDefaultAudioConfig = () => ({
-  ttsProviderId: 'browser-native-tts' as TTSProviderId,
-  ttsVoice: 'default',
+  ttsProviderId: FORCED_TTS_PROVIDER,
+  ttsVoice: FORCED_TTS_VOICE,
   ttsSpeed: 1.0,
   asrProviderId: 'browser-native' as ASRProviderId,
   asrLanguage: 'zh',
   ttsProvidersConfig: {
-    'openai-tts': { apiKey: '', baseUrl: '', enabled: true },
+    'openai-tts': { apiKey: '', baseUrl: '', enabled: false },
     'azure-tts': { apiKey: '', baseUrl: '', enabled: false },
     'glm-tts': { apiKey: '', baseUrl: '', enabled: false },
     'qwen-tts': { apiKey: '', baseUrl: '', enabled: false },
-    'fish-audio-tts': { apiKey: '', baseUrl: '', enabled: false },
-    'browser-native-tts': { apiKey: '', baseUrl: '', enabled: true },
+    'fish-audio-tts': { apiKey: '', baseUrl: '', enabled: true },
+    'browser-native-tts': { apiKey: '', baseUrl: '', enabled: false },
   } as Record<TTSProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
   asrProvidersConfig: {
     'openai-whisper': { apiKey: '', baseUrl: '', enabled: true },
@@ -351,8 +353,10 @@ function ensureValidProviderSelections(state: Partial<SettingsState>): void {
     state.videoProviderId = defaultVideoConfig.videoProviderId;
   }
 
-  if (!hasProviderId(TTS_PROVIDERS, state.ttsProviderId)) {
-    state.ttsProviderId = defaultAudioConfig.ttsProviderId;
+  const previousTTSProvider = state.ttsProviderId;
+  state.ttsProviderId = FORCED_TTS_PROVIDER;
+  if (!state.ttsVoice || previousTTSProvider !== FORCED_TTS_PROVIDER) {
+    state.ttsVoice = FORCED_TTS_VOICE;
   }
 
   if (!hasProviderId(ASR_PROVIDERS, state.asrProviderId)) {
@@ -561,13 +565,12 @@ export const useSettingsStore = create<SettingsState>()(
         setChatAreaWidth: (width) => set({ chatAreaWidth: width }),
 
         // Audio actions
-        setTTSProvider: (providerId) =>
+        setTTSProvider: (_providerId) =>
           set((state) => {
-            // If switching provider, set default voice for that provider
-            const shouldUpdateVoice = state.ttsProviderId !== providerId;
+            const shouldUpdateVoice = state.ttsProviderId !== FORCED_TTS_PROVIDER;
             return {
-              ttsProviderId: providerId,
-              ...(shouldUpdateVoice && { ttsVoice: DEFAULT_TTS_VOICES[providerId] }),
+              ttsProviderId: FORCED_TTS_PROVIDER,
+              ...(shouldUpdateVoice && { ttsVoice: FORCED_TTS_VOICE }),
             };
           }),
 
@@ -863,8 +866,6 @@ export const useSettingsStore = create<SettingsState>()(
               }
 
               // === Auto-select / auto-enable (only on first run) ===
-              let autoTtsProvider: TTSProviderId | undefined;
-              let autoTtsVoice: string | undefined;
               let autoAsrProvider: ASRProviderId | undefined;
               let autoPdfProvider: PDFProviderId | undefined;
               let autoImageProvider: ImageProviderId | undefined;
@@ -878,16 +879,6 @@ export const useSettingsStore = create<SettingsState>()(
                 // PDF: unpdf → mineru if server has it
                 if (newPDFConfig.mineru?.isServerConfigured && state.pdfProviderId === 'unpdf') {
                   autoPdfProvider = 'mineru' as PDFProviderId;
-                }
-
-                // TTS: select first server provider if current is not server-configured
-                const serverTtsIds = Object.keys(data.tts) as TTSProviderId[];
-                if (
-                  serverTtsIds.length > 0 &&
-                  !newTTSConfig[state.ttsProviderId]?.isServerConfigured
-                ) {
-                  autoTtsProvider = serverTtsIds[0];
-                  autoTtsVoice = DEFAULT_TTS_VOICES[autoTtsProvider] || 'default';
                 }
 
                 // ASR: select first server provider if current is not server-configured
@@ -957,11 +948,12 @@ export const useSettingsStore = create<SettingsState>()(
                 videoProvidersConfig: newVideoConfig,
                 webSearchProvidersConfig: newWebSearchConfig,
                 autoConfigApplied: true,
+                ttsProviderId: FORCED_TTS_PROVIDER,
+                ttsVoice:
+                  state.ttsProviderId === FORCED_TTS_PROVIDER
+                    ? state.ttsVoice
+                    : FORCED_TTS_VOICE,
                 ...(autoPdfProvider && { pdfProviderId: autoPdfProvider }),
-                ...(autoTtsProvider && {
-                  ttsProviderId: autoTtsProvider,
-                  ttsVoice: autoTtsVoice,
-                }),
                 ...(autoAsrProvider && { asrProviderId: autoAsrProvider }),
                 ...(autoImageProvider && {
                   imageProviderId: autoImageProvider,
@@ -1007,15 +999,7 @@ export const useSettingsStore = create<SettingsState>()(
 
         // Migrate from old ttsModel to new ttsProviderId
         if (state.ttsModel && !state.ttsProviderId) {
-          // Map old ttsModel values to new ttsProviderId
-          if (state.ttsModel === 'openai-tts') {
-            state.ttsProviderId = 'openai-tts';
-          } else if (state.ttsModel === 'azure-tts') {
-            state.ttsProviderId = 'azure-tts';
-          } else {
-            // Default to OpenAI
-            state.ttsProviderId = 'openai-tts';
-          }
+          state.ttsProviderId = FORCED_TTS_PROVIDER;
         }
 
         // Add default audio config if missing

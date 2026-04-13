@@ -35,7 +35,7 @@ import { fetchFishVoicesFromServer } from '@/lib/audio/fish-voices-client';
 import { filterFishVoices, type FishVoiceLanguageFilter } from '@/lib/audio/fish-voice-utils';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
-import { TTS_PROVIDERS, getTTSVoices } from '@/lib/audio/constants';
+import { TTS_PROVIDERS } from '@/lib/audio/constants';
 import { ASR_PROVIDERS, getASRSupportedLanguages } from '@/lib/audio/constants';
 import type { ImageProviderId, VideoProviderId } from '@/lib/media/types';
 import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
@@ -45,7 +45,7 @@ interface MediaPopoverProps {
   onSettingsOpen: (section: SettingsSection) => void;
 }
 
-// ─── Provider icon maps ───
+// Provider icon maps
 const IMAGE_PROVIDER_ICONS: Record<string, string> = {
   seedream: '/logos/doubao.svg',
   'qwen-image': '/logos/bailian.svg',
@@ -59,21 +59,6 @@ const VIDEO_PROVIDER_ICONS: Record<string, string> = {
 };
 
 type TabId = 'image' | 'video' | 'tts' | 'asr';
-
-const LANG_LABELS: Record<string, string> = {
-  zh: '中文',
-  en: 'English',
-  ja: '日本語',
-  ko: '한국어',
-  fr: 'Français',
-  de: 'Deutsch',
-  es: 'Español',
-  pt: 'Português',
-  ru: 'Русский',
-  it: 'Italiano',
-  ar: 'العربية',
-  hi: 'हिन्दी',
-};
 
 const TABS: Array<{ id: TabId; icon: LucideIcon; label: string }> = [
   { id: 'image', icon: ImageIcon, label: 'Image' },
@@ -110,7 +95,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const [activeTab, setActiveTab] = useState<TabId>('image');
   const { previewing, startPreview, stopPreview } = useTTSPreview();
 
-  // ─── Store ───
+  // Store
   const imageGenerationEnabled = useSettingsStore((s) => s.imageGenerationEnabled);
   const videoGenerationEnabled = useSettingsStore((s) => s.videoGenerationEnabled);
   const ttsEnabled = useSettingsStore((s) => s.ttsEnabled);
@@ -136,7 +121,6 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const ttsVoice = useSettingsStore((s) => s.ttsVoice);
   const ttsSpeed = useSettingsStore((s) => s.ttsSpeed);
   const ttsProvidersConfig = useSettingsStore((s) => s.ttsProvidersConfig);
-  const setTTSProvider = useSettingsStore((s) => s.setTTSProvider);
   const setTTSVoice = useSettingsStore((s) => s.setTTSVoice);
   const setTTSSpeed = useSettingsStore((s) => s.setTTSSpeed);
   const fishVoices = useFishVoicesStore((s) => s.fishVoices);
@@ -172,9 +156,9 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   const [loadingFishVoices, setLoadingFishVoices] = useState(false);
   const fishAutoFetchAttemptedRef = useRef(false);
   const [fishLanguageFilter, setFishLanguageFilter] = useState<FishVoiceLanguageFilter>('zh');
-  const fishChineseLabel = '中文';
-  const fishEnglishLabel = '英文';
-  const fishOtherLabel = '其他';
+  const fishChineseLabel = 'ZH';
+  const fishEnglishLabel = 'EN';
+  const fishOtherLabel = 'Other';
 
   const filteredFishVoices = useMemo(
     () => filterFishVoices(fishVoices, { languageFilter: fishLanguageFilter }),
@@ -190,17 +174,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     setFishVoices(voices);
   }, [setFishVoices, ttsProvidersConfig]);
 
-  // ─── Dynamic browser voices ───
-  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([]);
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
-    const load = () => setBrowserVoices(window.speechSynthesis.getVoices());
-    load();
-    window.speechSynthesis.addEventListener('voiceschanged', load);
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', load);
-  }, []);
-
-  // ─── Grouped select data (only available providers) ───
+  // Grouped select data (only available providers)
   const imageGroups = useMemo(
     () =>
       Object.values(IMAGE_PROVIDERS)
@@ -235,51 +209,22 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
     [videoProvidersConfig],
   );
 
-  // TTS: grouped by provider, voices as items (matching Image/Video pattern)
-  // Browser-native voices are split into sub-groups by language.
+  // TTS is fixed to fish-audio-tts and grouped by fish voices.
   const ttsGroups = useMemo(() => {
-    const groups: SelectGroupData[] = [];
-
-    for (const p of Object.values(TTS_PROVIDERS)) {
-      if (p.requiresApiKey && !cfgOk(ttsProvidersConfig, p.id, p.requiresApiKey)) continue;
-
-      const providerName = getTTSProviderName(p.id, t);
-
-      // For browser-native-tts, split voices by language
-      if (p.id === 'browser-native-tts' && browserVoices.length > 0) {
-        const byLang = new Map<string, SpeechSynthesisVoice[]>();
-        for (const v of browserVoices) {
-          const langKey = v.lang.split('-')[0]; // "zh-CN" → "zh"
-          if (!byLang.has(langKey)) byLang.set(langKey, []);
-          byLang.get(langKey)!.push(v);
-        }
-        for (const [langKey, voices] of byLang) {
-          const langLabel = LANG_LABELS[langKey] || langKey;
-          groups.push({
-            groupId: p.id,
-            groupName: `${providerName} · ${langLabel}`,
-            groupIcon: p.icon,
-            available: true,
-            items: voices.map((v) => ({ id: v.voiceURI, name: v.name })),
-          });
-        }
-        continue;
-      }
-
-      groups.push({
-        groupId: p.id,
-        groupName: providerName,
-        groupIcon: p.icon,
+    const fishProvider = TTS_PROVIDERS['fish-audio-tts'];
+    return [
+      {
+        groupId: fishProvider.id,
+        groupName: getTTSProviderName(fishProvider.id, t),
+        groupIcon: fishProvider.icon,
         available: true,
-        items: (p.id === 'fish-audio-tts' ? filteredFishVoices : getTTSVoices(p.id)).map((v) => ({
+        items: filteredFishVoices.map((v) => ({
           id: v.id,
           name: getVoiceDisplayName(v.name, locale),
         })),
-      });
-    }
-
-    return groups;
-  }, [ttsProvidersConfig, locale, browserVoices, t, filteredFishVoices]);
+      },
+    ];
+  }, [locale, t, filteredFishVoices]);
 
   // TTS preview
   const handlePreview = useCallback(async () => {
@@ -395,7 +340,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
       </PopoverTrigger>
 
       <PopoverContent align="start" side="bottom" avoidCollisions={false} className="w-80 p-0">
-        {/* ── Tab bar (segmented control) ── */}
+        {/* Tab bar (segmented control) */}
         <div className="p-2 pb-0">
           <div className="flex gap-0.5 p-0.5 bg-muted/60 rounded-lg">
             {TABS.map((tab) => {
@@ -424,7 +369,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
           </div>
         </div>
 
-        {/* ── Tab content ── */}
+        {/* Tab content */}
         <div className="p-3 pt-2.5">
           {activeTab === 'image' && (
             <TabPanel
@@ -497,10 +442,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
                     selectedGroupId={ttsProviderId}
                     selectedItemId={ttsVoice}
                     showGroupInTrigger={false}
-                    onSelect={(gid, iid) => {
-                      if (gid !== ttsProviderId) {
-                        setTTSProvider(gid as TTSProviderId);
-                      }
+                    onSelect={(_gid, iid) => {
                       setTTSVoice(iid);
                     }}
                   />
@@ -563,7 +505,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
           )}
         </div>
 
-        {/* ── Footer ── */}
+        {/* Footer */}
         <div className="border-t border-border/40">
           <button
             onClick={() => {
@@ -581,7 +523,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
   );
 }
 
-// ─── Tab panel: header (label + switch) + optional body ───
+// Tab panel: header (label + switch) + optional body
 function TabPanel({
   icon: Icon,
   label,
@@ -623,7 +565,7 @@ function TabPanel({
   );
 }
 
-// ─── Grouped provider+model select ───
+// Grouped provider+model select
 interface SelectGroupData {
   groupId: string;
   groupName: string;
@@ -649,8 +591,7 @@ function GroupedSelect({
   onSelect: (groupId: string, itemId: string) => void;
 }) {
   const composite = `${selectedGroupId}::${selectedItemId}`;
-  // When multiple groups share the same groupId (e.g. browser-native-tts split by language),
-  // find the sub-group that actually contains the selected item.
+  // Find the group that actually contains the selected item.
   const selectedGroup =
     groups.find(
       (g) => g.groupId === selectedGroupId && g.items.some((item) => item.id === selectedItemId),

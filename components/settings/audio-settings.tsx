@@ -81,7 +81,6 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   const ttsVoice = useSettingsStore((state) => state.ttsVoice);
   const ttsSpeed = useSettingsStore((state) => state.ttsSpeed);
   const ttsProvidersConfig = useSettingsStore((state) => state.ttsProvidersConfig);
-  const setTTSProvider = useSettingsStore((state) => state.setTTSProvider);
   const setTTSVoice = useSettingsStore((state) => state.setTTSVoice);
   const setTTSSpeed = useSettingsStore((state) => state.setTTSSpeed);
   const setTTSProviderConfig = useSettingsStore((state) => state.setTTSProviderConfig);
@@ -101,17 +100,12 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
   const setTTSEnabled = useSettingsStore((state) => state.setTTSEnabled);
   const setASREnabled = useSettingsStore((state) => state.setASREnabled);
 
-  const ttsProvider = TTS_PROVIDERS[ttsProviderId] ?? TTS_PROVIDERS['openai-tts'];
+  const ttsProvider = TTS_PROVIDERS[ttsProviderId] ?? TTS_PROVIDERS['fish-audio-tts'];
 
   // Azure voices - load from static JSON
   const azureVoices = useMemo(() => azureVoicesData.voices, []);
 
   // Wrapped setters that trigger onSave callback
-  const handleTTSProviderChange = (providerId: TTSProviderId) => {
-    setTTSProvider(providerId);
-    onSave?.();
-  };
-
   const handleTTSVoiceChange = (voice: string) => {
     setTTSVoice(voice);
     onSave?.();
@@ -637,31 +631,21 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
         >
           <div className="space-y-2">
             <Label className="text-sm">{t('settings.ttsProvider')}</Label>
-            <Select
-              value={ttsProviderId}
-              onValueChange={(value) => handleTTSProviderChange(value as TTSProviderId)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.values(TTS_PROVIDERS).map((provider) => (
-                  <SelectItem key={provider.id} value={provider.id}>
-                    <div className="flex items-center gap-2">
-                      {provider.icon && (
-                        <img src={provider.icon} alt={provider.name} className="w-4 h-4" />
-                      )}
-                      {getTTSProviderName(provider.id, t)}
-                      {ttsProvidersConfig[provider.id]?.isServerConfigured && (
-                        <span className="text-[10px] px-1 py-0.5 rounded border text-muted-foreground">
-                          {t('settings.serverConfigured')}
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="h-10 w-full rounded-md border border-input bg-muted/30 px-3 text-sm flex items-center gap-2">
+              {TTS_PROVIDERS['fish-audio-tts']?.icon && (
+                <img
+                  src={TTS_PROVIDERS['fish-audio-tts'].icon}
+                  alt={TTS_PROVIDERS['fish-audio-tts'].name}
+                  className="w-4 h-4"
+                />
+              )}
+              <span>{getTTSProviderName('fish-audio-tts', t)}</span>
+              {ttsProvidersConfig['fish-audio-tts']?.isServerConfigured && (
+                <span className="ml-auto text-[10px] px-1 py-0.5 rounded border text-muted-foreground">
+                  {t('settings.serverConfigured')}
+                </span>
+              )}
+            </div>
           </div>
 
           {(ttsProvider.requiresApiKey ||

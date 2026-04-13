@@ -16,6 +16,7 @@ import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
 
 const log = createLogger('TTS API');
+const FORCED_TTS_PROVIDER: TTSProviderId = 'fish-audio-tts';
 
 export const maxDuration = 30;
 
@@ -31,19 +32,21 @@ export async function POST(req: NextRequest) {
       ttsApiKey?: string;
       ttsBaseUrl?: string;
     };
+    const requestedProviderId = ttsProviderId;
+    const providerId = FORCED_TTS_PROVIDER;
+    const voice = requestedProviderId === providerId ? ttsVoice : 'default';
 
     // Validate required fields
-    if (!text || !audioId || !ttsProviderId || !ttsVoice) {
+    if (!text || !audioId) {
       return apiError(
         'MISSING_REQUIRED_FIELD',
         400,
-        'Missing required fields: text, audioId, ttsProviderId, ttsVoice',
+        'Missing required fields: text, audioId',
       );
     }
 
-    // Reject browser-native TTS — must be handled client-side
-    if (ttsProviderId === 'browser-native-tts') {
-      return apiError('INVALID_REQUEST', 400, 'browser-native-tts must be handled client-side');
+    if (requestedProviderId && requestedProviderId !== providerId) {
+      log.warn(`TTS provider overridden to fixed provider: requested=${requestedProviderId}`);
     }
 
     const clientBaseUrl = ttsBaseUrl || undefined;
@@ -56,22 +59,22 @@ export async function POST(req: NextRequest) {
 
     const apiKey = clientBaseUrl
       ? ttsApiKey || ''
-      : resolveTTSApiKey(ttsProviderId, ttsApiKey || undefined);
+      : resolveTTSApiKey(providerId, ttsApiKey || undefined);
     const baseUrl = clientBaseUrl
       ? clientBaseUrl
-      : resolveTTSBaseUrl(ttsProviderId, ttsBaseUrl || undefined);
+      : resolveTTSBaseUrl(providerId, ttsBaseUrl || undefined);
 
     // Build TTS config
     const config = {
-      providerId: ttsProviderId,
-      voice: ttsVoice,
+      providerId,
+      voice: voice || 'default',
       speed: ttsSpeed ?? 1.0,
       apiKey,
       baseUrl,
     };
 
     log.info(
-      `Generating TTS: provider=${ttsProviderId}, voice=${ttsVoice}, audioId=${audioId}, textLen=${text.length}`,
+      `Generating TTS: provider=${providerId}, voice=${config.voice}, audioId=${audioId}, textLen=${text.length}`,
     );
 
     // Generate audio

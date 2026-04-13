@@ -879,11 +879,13 @@ export function SettingsDialog({ open, onOpenChange, initialSection }: SettingsD
           {activeSection === 'tts' && (
             <>
               <ProviderListColumn
-                providers={Object.values(TTS_PROVIDERS).map((p) => ({
-                  id: p.id,
-                  name: getTTSProviderName(p.id, t),
-                  icon: p.icon,
-                }))}
+                providers={[
+                  {
+                    id: 'fish-audio-tts',
+                    name: getTTSProviderName('fish-audio-tts', t),
+                    icon: TTS_PROVIDERS['fish-audio-tts']?.icon,
+                  },
+                ]}
                 configs={ttsProvidersConfig}
                 selectedId={ttsProviderId}
                 onSelect={setTTSProvider}
