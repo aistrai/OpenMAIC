@@ -99,9 +99,9 @@ export async function generateAndStoreTTS(
   audioId: string,
   text: string,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<boolean> {
   const settings = useSettingsStore.getState();
-  if (settings.ttsProviderId === 'browser-native-tts') return;
+  if (settings.ttsProviderId === 'browser-native-tts') return false;
 
   const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
   const response = await fetch('/api/generate/tts', {
@@ -136,12 +136,23 @@ export async function generateAndStoreTTS(
     bytes[i] = binary.charCodeAt(i);
   }
   const blob = new Blob([bytes], { type: `audio/${data.format}` });
-  await db.audioFiles.put({
-    id: audioId,
-    blob,
-    format: data.format,
-    createdAt: Date.now(),
-  });
+  try {
+    await db.audioFiles.put({
+      id: audioId,
+      blob,
+      format: data.format,
+      createdAt: Date.now(),
+    });
+    return true;
+  } catch (error) {
+    // Safari may fail IndexedDB Blob persistence under storage constraints
+    // even when TTS API succeeds. Treat as non-fatal and fall back to text-only playback.
+    log.warn('TTS audio persistence failed, fallback to text-only playback:', {
+      audioId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 /** Generate TTS for all speech actions in a scene. Returns result. */
@@ -161,11 +172,16 @@ async function generateTTSForScene(
 
   for (const action of speechActions) {
     const audioId = `tts_${action.id}`;
-    action.audioId = audioId;
     try {
-      await generateAndStoreTTS(audioId, action.text, signal);
+      const stored = await generateAndStoreTTS(audioId, action.text, signal);
+      if (stored) {
+        action.audioId = audioId;
+      } else {
+        delete action.audioId;
+      }
     } catch (error) {
       failedCount++;
+      delete action.audioId;
       lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
       log.warn('TTS generation failed:', {
         providerId,
@@ -335,7 +351,8 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             const scene = actionsResult.scene;
             const settings = useSettingsStore.getState();
 
-            // TTS generation — failure means the whole scene fails
+            // TTS API generation failure means the whole scene fails.
+            // IndexedDB persistence failure is downgraded to text-only playback.
             if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
               const ttsResult = await generateTTSForScene(scene, signal);
               if (!ttsResult.success) {

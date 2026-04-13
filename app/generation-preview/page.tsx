@@ -649,9 +649,9 @@ function GenerationPreviewContent() {
         );
 
         let ttsFailCount = 0;
+        let ttsStorageFailCount = 0;
         for (const action of speechActions) {
           const audioId = `tts_${action.id}`;
-          action.audioId = audioId;
           try {
             const resp = await fetch('/api/generate/tts', {
               method: 'POST',
@@ -680,20 +680,35 @@ function GenerationPreviewContent() {
             const bytes = new Uint8Array(binary.length);
             for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
             const blob = new Blob([bytes], { type: `audio/${ttsData.format}` });
-            await db.audioFiles.put({
-              id: audioId,
-              blob,
-              format: ttsData.format,
-              createdAt: Date.now(),
-            });
+            try {
+              await db.audioFiles.put({
+                id: audioId,
+                blob,
+                format: ttsData.format,
+                createdAt: Date.now(),
+              });
+              action.audioId = audioId;
+            } catch (storageErr) {
+              // Safari may fail Blob persistence in IndexedDB under storage pressure.
+              // Don't fail the whole generation flow; fallback to text-only playback.
+              ttsStorageFailCount++;
+              delete action.audioId;
+              log.warn(`[TTS] Audio persistence failed for ${audioId}:`, storageErr);
+            }
           } catch (err) {
             log.warn(`[TTS] Failed for ${audioId}:`, err);
             ttsFailCount++;
+            delete action.audioId;
           }
         }
 
         if (ttsFailCount > 0 && speechActions.length > 0) {
           throw new Error(t('generation.speechFailed'));
+        }
+        if (ttsStorageFailCount > 0) {
+          log.warn(
+            `[TTS] ${ttsStorageFailCount}/${speechActions.length} audio files were not persisted. Falling back to text-only playback for those actions.`,
+          );
         }
       }
 
