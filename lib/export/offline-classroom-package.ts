@@ -199,50 +199,106 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
   <title>Offline Classroom</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: #f5f3ee; color: #1f2933; }
-    .shell { min-height: 100vh; display: grid; grid-template-columns: minmax(220px, 280px) 1fr; }
-    aside { border-right: 1px solid #e2ddd2; background: #fffaf0; padding: 18px; overflow: auto; }
-    main { display: grid; grid-template-rows: 1fr auto; min-width: 0; }
-    h1 { font-size: 18px; margin: 0 0 4px; }
-    .desc { font-size: 12px; color: #667085; margin-bottom: 18px; line-height: 1.5; }
-    .scene-btn { width: 100%; border: 0; background: transparent; text-align: left; padding: 10px 12px; border-radius: 8px; cursor: pointer; color: #425466; }
-    .scene-btn.active { background: #1f2933; color: #fff; }
-    .scene-btn span { display: block; font-size: 12px; opacity: .7; }
-    .stage-wrap { display: grid; place-items: center; padding: 24px; min-width: 0; overflow: auto; }
-    .slide { position: relative; width: min(100%, 1100px); aspect-ratio: 16 / 9; background: #fff; overflow: hidden; box-shadow: 0 16px 50px rgba(31,41,51,.16); transform-origin: center; }
-    .el { position: absolute; overflow: hidden; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body { margin: 0; font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: #f7f7fb; color: #111827; }
+    button { font: inherit; }
+    .shell { height: 100dvh; display: grid; grid-template-columns: 236px minmax(0, 1fr); overflow: hidden; background: radial-gradient(circle at 20% 0%, #ffffff 0, #f7f7fb 34%, #eef1f8 100%); }
+    .sidebar { min-height: 0; border-right: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.84); backdrop-filter: blur(18px); display: flex; flex-direction: column; overflow: hidden; box-shadow: 2px 0 24px rgba(15,23,42,.04); }
+    .brand { height: 56px; padding: 12px 14px 8px; display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 0 0 auto; }
+    .brand h1 { font-size: 14px; line-height: 1.25; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .brand p { margin: 0; font-size: 11px; color: #64748b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px 14px; display: flex; flex-direction: column; gap: 8px; }
+    .scene-btn { width: 100%; border: 0; background: transparent; text-align: left; padding: 8px; border-radius: 12px; cursor: pointer; color: #475569; display: grid; grid-template-columns: 24px minmax(0,1fr); gap: 8px; align-items: center; transition: background .18s ease, box-shadow .18s ease, color .18s ease; }
+    .scene-btn:hover { background: rgba(241,245,249,.9); }
+    .scene-btn.active { background: #f3e8ff; color: #6d28d9; box-shadow: inset 0 0 0 1px rgba(147,51,234,.24); }
+    .scene-no { width: 22px; height: 22px; border-radius: 999px; display: grid; place-items: center; font-size: 11px; font-weight: 800; background: #eef2ff; color: #64748b; }
+    .scene-btn.active .scene-no { background: #7c3aed; color: white; }
+    .scene-title { min-width: 0; font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scene-type { font-size: 10px; color: #94a3b8; margin-top: 2px; text-transform: uppercase; letter-spacing: .04em; }
+    .main { min-width: 0; min-height: 0; display: grid; grid-template-rows: 56px minmax(0,1fr) 174px; overflow: hidden; }
+    .topbar { min-width: 0; height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 18px; border-bottom: 1px solid rgba(15,23,42,.06); background: rgba(255,255,255,.66); backdrop-filter: blur(14px); }
+    .top-title { min-width: 0; }
+    .top-title .kicker { font-size: 11px; color: #94a3b8; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .top-title .name { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pill { flex: 0 0 auto; font-size: 12px; color: #475569; border: 1px solid rgba(15,23,42,.08); background: white; border-radius: 999px; padding: 7px 10px; box-shadow: 0 8px 20px rgba(15,23,42,.04); }
+    .stage-wrap { min-height: 0; min-width: 0; padding: 18px; display: grid; place-items: center; overflow: hidden; position: relative; }
+    .slide-frame { width: 100%; height: 100%; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; }
+    .slide { position: absolute; left: 50%; top: 50%; background: #fff; overflow: hidden; box-shadow: 0 18px 60px rgba(15,23,42,.18); transform-origin: center center; transition: transform .18s ease; }
+    .slide.has-focus .el:not(.focus-target) { filter: brightness(.55) saturate(.8); opacity: .42; }
+    .el { position: absolute; overflow: hidden; transition: opacity .18s ease, filter .18s ease, box-shadow .18s ease; }
+    .el.focus-target { z-index: 20; box-shadow: 0 0 0 4px rgba(250,204,21,.95), 0 0 0 9999px rgba(15,23,42,.38); border-radius: 8px; }
+    .el.laser-target::after { content: ""; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 8px rgba(239,68,68,.18), 0 0 28px rgba(239,68,68,.8); animation: pulse 1s infinite; }
     .text { line-height: 1.35; word-break: break-word; }
     .text * { max-width: 100%; }
     img, video { width: 100%; height: 100%; object-fit: cover; display: block; }
-    iframe { width: min(100%, 1100px); height: min(70vh, 760px); border: 0; background: #fff; box-shadow: 0 16px 50px rgba(31,41,51,.16); }
-    .fallback { width: min(100%, 900px); background: #fff; padding: 28px; border-radius: 8px; line-height: 1.6; box-shadow: 0 16px 50px rgba(31,41,51,.12); }
-    .controls { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-top: 1px solid #e2ddd2; background: rgba(255,250,240,.92); }
-    button.control { border: 0; border-radius: 8px; padding: 9px 14px; background: #1f2933; color: #fff; cursor: pointer; }
-    button.control.secondary { background: #e7e0d1; color: #1f2933; }
-    .caption { flex: 1; min-width: 0; font-size: 14px; color: #425466; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    @media (max-width: 760px) {
-      .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      aside { max-height: 180px; border-right: 0; border-bottom: 1px solid #e2ddd2; }
-      .stage-wrap { padding: 12px; }
-      .controls { flex-wrap: wrap; }
-      .caption { flex-basis: 100%; white-space: normal; }
+    iframe { width: min(100%, 1100px); height: 100%; min-height: 420px; border: 0; border-radius: 16px; background: #fff; box-shadow: 0 18px 60px rgba(15,23,42,.18); }
+    .fallback { width: min(100%, 900px); background: white; padding: 28px; border-radius: 16px; line-height: 1.6; box-shadow: 0 18px 60px rgba(15,23,42,.12); }
+    .roundtable { min-height: 0; border-top: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: grid; grid-template-columns: 132px minmax(0,1fr) 250px; gap: 14px; padding: 14px 18px; overflow: hidden; }
+    .teacher { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .avatar { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; color: white; font-weight: 900; background: linear-gradient(135deg, #7c3aed, #2563eb); box-shadow: 0 10px 30px rgba(79,70,229,.25); }
+    .teacher-name { font-size: 12px; font-weight: 800; color: #334155; }
+    .teacher-state { font-size: 11px; color: #64748b; margin-top: 2px; }
+    .speech-card { min-width: 0; min-height: 0; border-radius: 16px; background: #f8fafc; border: 1px solid rgba(15,23,42,.06); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+    .caption { flex: 1 1 auto; min-height: 0; overflow: auto; color: #334155; font-size: 14px; line-height: 1.55; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .caption.empty { color: #94a3b8; }
+    .progress-track { height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; flex: 0 0 auto; }
+    .progress-bar { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7c3aed, #06b6d4); transition: width .12s linear; }
+    .controls { min-width: 0; display: grid; grid-template-columns: 44px 1fr 44px; grid-template-rows: 44px 32px; gap: 8px; align-content: center; }
+    .control { border: 0; border-radius: 14px; cursor: pointer; color: white; background: #111827; display: grid; place-items: center; box-shadow: 0 10px 26px rgba(15,23,42,.16); transition: transform .14s ease, background .14s ease; }
+    .control:hover { transform: translateY(-1px); background: #0f172a; }
+    .control.secondary { color: #334155; background: #e2e8f0; box-shadow: none; }
+    .control.wide { display: flex; gap: 8px; align-items: center; justify-content: center; font-weight: 800; }
+    .speed { grid-column: 1 / 4; border: 0; border-radius: 999px; cursor: pointer; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 800; }
+    @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: .58; } }
+    @media (max-width: 820px) {
+      .shell { grid-template-columns: 1fr; grid-template-rows: 112px minmax(0,1fr); }
+      .sidebar { height: 112px; border-right: 0; border-bottom: 1px solid rgba(15,23,42,.08); }
+      .brand { height: 42px; padding-bottom: 2px; }
+      .scene-list { flex-direction: row; overflow-x: auto; overflow-y: hidden; padding: 6px 10px 10px; }
+      .scene-btn { width: 180px; flex: 0 0 180px; }
+      .main { grid-template-rows: 48px minmax(0,1fr) 190px; }
+      .roundtable { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr) auto; gap: 8px; padding: 10px; }
+      .teacher { display: none; }
+      .controls { grid-template-columns: 44px 1fr 44px; }
     }
   </style>
 </head>
 <body>
   <div class="shell">
-    <aside>
-      <h1 id="title"></h1>
-      <div class="desc" id="desc"></div>
-      <div id="sceneList"></div>
+    <aside class="sidebar">
+      <div class="brand">
+        <h1 id="title"></h1>
+        <p id="desc"></p>
+      </div>
+      <div class="scene-list" id="sceneList"></div>
     </aside>
-    <main>
+    <main class="main">
+      <div class="topbar">
+        <div class="top-title">
+          <div class="kicker">Offline classroom</div>
+          <div class="name" id="sceneTitle"></div>
+        </div>
+        <div class="pill" id="positionPill"></div>
+      </div>
       <div class="stage-wrap" id="stage"></div>
-      <div class="controls">
-        <button class="control secondary" id="prevBtn">Prev</button>
-        <button class="control" id="playBtn">Play</button>
-        <button class="control secondary" id="nextBtn">Next</button>
-        <div class="caption" id="caption"></div>
+      <div class="roundtable">
+        <div class="teacher">
+          <div class="avatar">AI</div>
+          <div>
+            <div class="teacher-name">Teacher</div>
+            <div class="teacher-state" id="teacherState">Ready</div>
+          </div>
+        </div>
+        <div class="speech-card">
+          <div class="caption empty" id="caption">Press Play to start the lecture.</div>
+          <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        </div>
+        <div class="controls">
+          <button class="control secondary" id="prevBtn" title="Previous">Prev</button>
+          <button class="control wide" id="playBtn">Play</button>
+          <button class="control secondary" id="nextBtn" title="Next">Next</button>
+          <button class="speed" id="speedBtn">Speed 1x</button>
+        </div>
       </div>
     </main>
   </div>
@@ -252,31 +308,70 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     const scenes = [...(classroom.scenes || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
     let sceneIndex = 0;
     let actionIndex = 0;
-    let playing = false;
+    let status = 'idle';
     let audio = null;
+    let loopToken = 0;
+    let playbackRate = 1;
+    let activeFocusElementId = null;
+    let activeFocusType = null;
     const title = document.getElementById('title');
     const desc = document.getElementById('desc');
     const sceneList = document.getElementById('sceneList');
     const stage = document.getElementById('stage');
     const caption = document.getElementById('caption');
     const playBtn = document.getElementById('playBtn');
+    const sceneTitle = document.getElementById('sceneTitle');
+    const positionPill = document.getElementById('positionPill');
+    const teacherState = document.getElementById('teacherState');
+    const progressBar = document.getElementById('progressBar');
+    const speedBtn = document.getElementById('speedBtn');
     title.textContent = classroom.stage?.name || 'Offline Classroom';
     desc.textContent = classroom.stage?.description || '';
+    function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
     function px(value) { return typeof value === 'number' ? value + 'px' : value || '0px'; }
+    function sceneTypeLabel(scene) { return scene?.content?.type || scene?.type || 'scene'; }
+    function updateControls() {
+      playBtn.textContent = status === 'playing' ? 'Pause' : status === 'paused' ? 'Resume' : status === 'completed' ? 'Replay' : 'Play';
+      teacherState.textContent = status === 'playing' ? 'Speaking' : status === 'paused' ? 'Paused' : status === 'completed' ? 'Completed' : 'Ready';
+      speedBtn.textContent = 'Speed ' + playbackRate + 'x';
+    }
     function renderSceneList() {
       sceneList.innerHTML = '';
       scenes.forEach((scene, index) => {
         const btn = document.createElement('button');
         btn.className = 'scene-btn' + (index === sceneIndex ? ' active' : '');
-        btn.innerHTML = '<span>' + String(index + 1).padStart(2, '0') + '</span>' + (scene.title || 'Scene');
-        btn.onclick = () => { stopAudio(); sceneIndex = index; actionIndex = 0; render(); };
+        btn.innerHTML = '<span class="scene-no">' + (index + 1) + '</span><span><span class="scene-title">' + (scene.title || 'Scene') + '</span><span class="scene-type">' + sceneTypeLabel(scene) + '</span></span>';
+        btn.onclick = () => { stopPlayback(); sceneIndex = index; actionIndex = 0; activeFocusElementId = null; render(); };
         sceneList.appendChild(btn);
       });
+      const active = sceneList.querySelector('.scene-btn.active');
+      if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    function fitSlide() {
+      const frame = stage.querySelector('.slide-frame');
+      const slide = stage.querySelector('.slide');
+      if (!frame || !slide) return;
+      const designWidth = Number(slide.dataset.designWidth || 960);
+      const designHeight = Number(slide.dataset.designHeight || 540);
+      const scale = Math.min(frame.clientWidth / designWidth, frame.clientHeight / designHeight);
+      slide.style.transform = 'translate(-50%, -50%) scale(' + Math.max(.1, scale) + ')';
+    }
+    window.addEventListener('resize', fitSlide);
+    if ('ResizeObserver' in window) {
+      new ResizeObserver(fitSlide).observe(stage);
     }
     function renderSlide(scene) {
       const canvas = scene.content?.canvas;
+      const designWidth = canvas?.viewportSize || 960;
+      const designHeight = Math.round(designWidth * (canvas?.viewportRatio || 0.5625));
+      const frame = document.createElement('div');
+      frame.className = 'slide-frame';
       const slide = document.createElement('div');
       slide.className = 'slide';
+      slide.dataset.designWidth = String(designWidth);
+      slide.dataset.designHeight = String(designHeight);
+      slide.style.width = designWidth + 'px';
+      slide.style.height = designHeight + 'px';
       const bg = canvas?.background;
       if (bg?.type === 'solid') slide.style.background = bg.color;
       if (bg?.type === 'image' && bg.image?.src) {
@@ -287,6 +382,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       for (const element of canvas?.elements || []) {
         const el = document.createElement('div');
         el.className = 'el';
+        el.dataset.elementId = element.id || '';
         el.style.left = px(element.left);
         el.style.top = px(element.top);
         el.style.width = px(element.width);
@@ -316,14 +412,16 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
         }
         slide.appendChild(el);
       }
-      return slide;
+      frame.appendChild(slide);
+      return frame;
     }
     function render() {
       const scene = scenes[sceneIndex];
       renderSceneList();
-      caption.textContent = '';
       stage.innerHTML = '';
       if (!scene) return;
+      sceneTitle.textContent = scene.title || 'Scene';
+      positionPill.textContent = (sceneIndex + 1) + ' / ' + scenes.length;
       if (scene.content?.type === 'slide') stage.appendChild(renderSlide(scene));
       else if (scene.content?.type === 'interactive' && scene.content.url) {
         const iframe = document.createElement('iframe');
@@ -335,53 +433,157 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
         box.textContent = scene.title || 'Unsupported scene';
         stage.appendChild(box);
       }
+      requestAnimationFrame(() => { fitSlide(); applyFocus(activeFocusElementId, activeFocusType); });
     }
-    function stopAudio() {
+    function setCaption(text, empty) {
+      caption.textContent = text || '';
+      caption.classList.toggle('empty', !!empty);
+    }
+    function clearFocus() {
+      const slide = stage.querySelector('.slide');
+      if (slide) slide.classList.remove('has-focus');
+      stage.querySelectorAll('.focus-target,.laser-target').forEach(el => el.classList.remove('focus-target', 'laser-target'));
+      activeFocusElementId = null;
+      activeFocusType = null;
+    }
+    function elementSelector(elementId) {
+      const escaped = window.CSS && CSS.escape ? CSS.escape(elementId) : String(elementId).replace(/["\\\\]/g, '\\\\$&');
+      return '[data-element-id="' + escaped + '"]';
+    }
+    function applyFocus(elementId, type) {
+      stage.querySelectorAll('.focus-target,.laser-target').forEach(el => el.classList.remove('focus-target', 'laser-target'));
+      const slide = stage.querySelector('.slide');
+      if (!slide) return;
+      if (!elementId) { slide.classList.remove('has-focus'); return; }
+      const target = stage.querySelector(elementSelector(elementId));
+      if (!target) { slide.classList.remove('has-focus'); return; }
+      slide.classList.add('has-focus');
+      target.classList.add('focus-target');
+      if (type === 'laser') target.classList.add('laser-target');
+      activeFocusElementId = elementId;
+      activeFocusType = type;
+    }
+    function stopPlayback(markCompleted) {
+      loopToken++;
       if (audio) { audio.pause(); audio = null; }
-      playing = false;
-      playBtn.textContent = 'Play';
+      status = markCompleted ? 'completed' : 'idle';
+      progressBar.style.width = '0%';
+      setCaption(markCompleted ? 'Lecture completed.' : 'Press Play to start the lecture.', true);
+      updateControls();
     }
-    async function playNextAction() {
-      const scene = scenes[sceneIndex];
-      const actions = scene?.actions || [];
-      if (actionIndex >= actions.length) {
-        if (sceneIndex < scenes.length - 1) {
-          sceneIndex++;
-          actionIndex = 0;
-          render();
-          if (playing) return playNextAction();
-        }
-        stopAudio();
+    async function playSpeech(action, token) {
+      setCaption(action.text || '', false);
+      if (!action.audioUrl) {
+        await wait(Math.max(1200, (action.text || '').length * 90));
         return;
       }
-      const action = actions[actionIndex++];
-      if (action.type !== 'speech') return playNextAction();
-      caption.textContent = action.text || '';
-      if (!action.audioUrl) return setTimeout(playNextAction, Math.max(1200, (action.text || '').length * 90));
       audio = new Audio(action.audioUrl);
-      audio.onended = playNextAction;
-      audio.onerror = playNextAction;
-      try { await audio.play(); } catch { playNextAction(); }
+      audio.playbackRate = playbackRate;
+      progressBar.style.width = '0%';
+      await new Promise(resolve => {
+        audio.onended = resolve;
+        audio.onerror = resolve;
+        audio.ontimeupdate = () => {
+          if (!audio || !audio.duration || token !== loopToken) return;
+          progressBar.style.width = Math.min(100, (audio.currentTime / audio.duration) * 100) + '%';
+        };
+        audio.play().catch(resolve);
+      });
+      audio = null;
+      progressBar.style.width = '0%';
     }
-    playBtn.onclick = () => {
-      if (playing) { stopAudio(); return; }
-      playing = true;
-      playBtn.textContent = 'Pause';
-      playNextAction();
-    };
+    async function executeAction(action, token) {
+      if (action.type === 'spotlight') {
+        applyFocus(action.elementId, 'spotlight');
+        await wait(450);
+        return;
+      }
+      if (action.type === 'laser') {
+        applyFocus(action.elementId, 'laser');
+        await wait(550);
+        return;
+      }
+      if (action.type === 'play_video') {
+        applyFocus(action.elementId, 'spotlight');
+        const video = stage.querySelector(elementSelector(action.elementId) + ' video');
+        if (!video) return;
+        await new Promise(resolve => {
+          video.onended = resolve;
+          video.onerror = resolve;
+          video.play().catch(resolve);
+        });
+        return;
+      }
+      if (action.type === 'speech') {
+        await playSpeech(action, token);
+      }
+    }
+    async function playLoop(token) {
+      while (token === loopToken && status === 'playing') {
+        const scene = scenes[sceneIndex];
+        const actions = scene?.actions || [];
+        if (actionIndex >= actions.length) {
+          clearFocus();
+          if (sceneIndex < scenes.length - 1) {
+            sceneIndex++;
+            actionIndex = 0;
+            render();
+            await wait(220);
+            continue;
+          }
+          stopPlayback(true);
+          return;
+        }
+        const action = actions[actionIndex++];
+        await executeAction(action, token);
+      }
+    }
+    function startOrResume() {
+      if (status === 'playing') {
+        status = 'paused';
+        if (audio) audio.pause();
+        updateControls();
+        return;
+      }
+      if (status === 'completed') {
+        sceneIndex = 0;
+        actionIndex = 0;
+        clearFocus();
+        render();
+      }
+      status = 'playing';
+      updateControls();
+      if (audio && audio.paused) {
+        audio.playbackRate = playbackRate;
+        audio.play().catch(() => {});
+        return;
+      }
+      const token = ++loopToken;
+      playLoop(token);
+    }
+    playBtn.onclick = startOrResume;
     document.getElementById('prevBtn').onclick = () => {
-      stopAudio();
+      stopPlayback();
       sceneIndex = Math.max(0, sceneIndex - 1);
       actionIndex = 0;
+      clearFocus();
       render();
     };
     document.getElementById('nextBtn').onclick = () => {
-      stopAudio();
+      stopPlayback();
       sceneIndex = Math.min(scenes.length - 1, sceneIndex + 1);
       actionIndex = 0;
+      clearFocus();
       render();
     };
+    speedBtn.onclick = () => {
+      const speeds = [1, 1.25, 1.5, 2];
+      playbackRate = speeds[(speeds.indexOf(playbackRate) + 1) % speeds.length];
+      if (audio) audio.playbackRate = playbackRate;
+      updateControls();
+    };
     render();
+    updateControls();
   </script>
 </body>
 </html>`;
