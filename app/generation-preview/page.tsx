@@ -664,6 +664,7 @@ function GenerationPreviewContent() {
                 ttsSpeed: settings.ttsSpeed,
                 ttsApiKey: ttsProviderConfig?.apiKey || undefined,
                 ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
+                classroomId: stage.id,
               }),
               signal,
             });
@@ -688,17 +689,25 @@ function GenerationPreviewContent() {
                 createdAt: Date.now(),
               });
               action.audioId = audioId;
+              if (ttsData.audioUrl) action.audioUrl = ttsData.audioUrl;
             } catch (storageErr) {
               // Safari may fail Blob persistence in IndexedDB under storage pressure.
-              // Don't fail the whole generation flow; fallback to text-only playback.
+              // Don't fail the whole generation flow; use server audio URL when available.
               ttsStorageFailCount++;
-              delete action.audioId;
+              if (ttsData.audioUrl) {
+                action.audioId = audioId;
+                action.audioUrl = ttsData.audioUrl;
+              } else {
+                delete action.audioId;
+                delete action.audioUrl;
+              }
               log.warn(`[TTS] Audio persistence failed for ${audioId}:`, storageErr);
             }
           } catch (err) {
             log.warn(`[TTS] Failed for ${audioId}:`, err);
             ttsFailCount++;
             delete action.audioId;
+            delete action.audioUrl;
           }
         }
 

@@ -248,7 +248,7 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
 
   // Storage methods
   saveToStorage: async () => {
-    const { stage, scenes, currentSceneId, chats } = get();
+    const { stage, scenes, currentSceneId, chats, outlines } = get();
     if (!stage?.id) {
       log.warn('Cannot save: stage.id is required');
       return;
@@ -264,6 +264,21 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       });
     } catch (error) {
       log.error('Failed to save to storage:', error);
+    }
+
+    if (typeof window !== 'undefined') {
+      try {
+        const response = await fetch('/api/classroom', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ stage, scenes, outlines }),
+        });
+        if (!response.ok) {
+          log.warn(`Failed to sync classroom to server: HTTP ${response.status}`);
+        }
+      } catch (error) {
+        log.warn('Failed to sync classroom to server:', error);
+      }
     }
   },
 

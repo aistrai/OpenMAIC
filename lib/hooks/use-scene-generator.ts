@@ -11,7 +11,10 @@ import type { Scene } from '@/lib/types/stage';
 import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
-import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
+import {
+  applyStoredMediaUrlsToScene,
+  generateMediaForOutlines,
+} from '@/lib/media/media-orchestrator';
 import {
   fetchSceneContentWithPolling,
   type SceneContentRequestParams,
@@ -99,9 +102,10 @@ export async function generateAndStoreTTS(
   audioId: string,
   text: string,
   signal?: AbortSignal,
-): Promise<boolean> {
+): Promise<{ stored: boolean; audioUrl?: string }> {
   const settings = useSettingsStore.getState();
-  if (settings.ttsProviderId === 'browser-native-tts') return false;
+  if (settings.ttsProviderId === 'browser-native-tts') return { stored: false };
+  const classroomId = useStageStore.getState().stage?.id;
 
   const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
   const response = await fetch('/api/generate/tts', {
@@ -115,6 +119,7 @@ export async function generateAndStoreTTS(
       ttsSpeed: settings.ttsSpeed,
       ttsApiKey: ttsProviderConfig?.apiKey || undefined,
       ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
+      classroomId,
     }),
     signal,
   });
@@ -143,7 +148,7 @@ export async function generateAndStoreTTS(
       format: data.format,
       createdAt: Date.now(),
     });
-    return true;
+    return { stored: true, audioUrl: data.audioUrl };
   } catch (error) {
     // Safari may fail IndexedDB Blob persistence under storage constraints
     // even when TTS API succeeds. Treat as non-fatal and fall back to text-only playback.
@@ -151,7 +156,7 @@ export async function generateAndStoreTTS(
       audioId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return false;
+    return { stored: false, audioUrl: data.audioUrl };
   }
 }
 
@@ -173,15 +178,18 @@ async function generateTTSForScene(
   for (const action of speechActions) {
     const audioId = `tts_${action.id}`;
     try {
-      const stored = await generateAndStoreTTS(audioId, action.text, signal);
-      if (stored) {
+      const result = await generateAndStoreTTS(audioId, action.text, signal);
+      if (result.stored || result.audioUrl) {
         action.audioId = audioId;
+        if (result.audioUrl) action.audioUrl = result.audioUrl;
       } else {
         delete action.audioId;
+        delete action.audioUrl;
       }
     } catch (error) {
       failedCount++;
       delete action.audioId;
+      delete action.audioUrl;
       lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
       log.warn('TTS generation failed:', {
         providerId,
@@ -348,7 +356,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
           );
 
           if (actionsResult.success && actionsResult.scene) {
-            const scene = actionsResult.scene;
+            let scene = actionsResult.scene;
             const settings = useSettingsStore.getState();
 
             // TTS API generation failure means the whole scene fails.
@@ -374,6 +382,7 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
               break;
             }
 
+            scene = await applyStoredMediaUrlsToScene(scene);
             removeGeneratingOutline(outline.id);
             store.getState().addScene(scene);
             options.onSceneGenerated?.(scene, outline.order);

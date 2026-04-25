@@ -44,10 +44,15 @@ export default function ClassroomDetailPage() {
           if (res.ok) {
             const json = await res.json();
             if (json.success && json.classroom) {
-              const { stage, scenes } = json.classroom;
+              const { stage, scenes, outlines } = json.classroom;
               useStageStore.getState().setStage(stage);
               useStageStore.setState({
                 scenes,
+                outlines: outlines || [],
+                generatingOutlines: (outlines || []).filter(
+                  (outline: { order: number }) =>
+                    !scenes.some((scene: { order: number }) => scene.order === outline.order),
+                ),
                 currentSceneId: scenes[0]?.id ?? null,
               });
               log.info('Loaded from server-side storage:', classroomId);
@@ -91,6 +96,7 @@ export default function ClassroomDetailPage() {
 
     // Clear whiteboard history to prevent snapshots from a previous course leaking in.
     useWhiteboardHistoryStore.getState().clearHistory();
+    useStageStore.getState().clearStore();
 
     loadClassroom();
 

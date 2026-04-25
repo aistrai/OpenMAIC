@@ -182,6 +182,11 @@ function HomePage() {
     setPendingDeleteId(null);
     try {
       await deleteStageData(id);
+      await fetch(`/api/classroom?id=${encodeURIComponent(id)}`, { method: 'DELETE' }).catch(
+        (err) => {
+          log.warn('Failed to delete server classroom:', err);
+        },
+      );
       await loadClassrooms();
     } catch (err) {
       log.error('Failed to delete classroom:', err);

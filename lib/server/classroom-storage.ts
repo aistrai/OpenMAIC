@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import type { SceneOutline } from '@/lib/types/generation';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
@@ -43,7 +44,9 @@ export interface PersistedClassroomData {
   id: string;
   stage: Stage;
   scenes: Scene[];
+  outlines?: SceneOutline[];
   createdAt: string;
+  updatedAt: string;
 }
 
 export function isValidClassroomId(id: string): boolean {
@@ -63,19 +66,37 @@ export async function readClassroom(id: string): Promise<PersistedClassroomData 
   }
 }
 
+export async function deleteClassroom(id: string): Promise<void> {
+  const filePath = path.join(CLASSROOMS_DIR, `${id}.json`);
+  const mediaDir = path.join(CLASSROOMS_DIR, id);
+  await Promise.all([
+    fs.rm(filePath, { force: true }),
+    fs.rm(mediaDir, { recursive: true, force: true }),
+  ]);
+}
+
 export async function persistClassroom(
   data: {
     id: string;
     stage: Stage;
     scenes: Scene[];
+    outlines?: SceneOutline[];
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
+  const existing = await readClassroom(data.id);
+  const now = new Date().toISOString();
   const classroomData: PersistedClassroomData = {
     id: data.id,
     stage: data.stage,
     scenes: data.scenes,
-    createdAt: new Date().toISOString(),
+    ...(data.outlines
+      ? { outlines: data.outlines }
+      : existing?.outlines
+        ? { outlines: existing.outlines }
+        : {}),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
   };
 
   await ensureClassroomsDir();

@@ -8,9 +8,11 @@
 
 import { useMediaGenerationStore } from '@/lib/store/media-generation';
 import { useSettingsStore } from '@/lib/store/settings';
+import { useStageStore } from '@/lib/store/stage';
 import { db, mediaFileKey } from '@/lib/utils/database';
 import type { SceneOutline } from '@/lib/types/generation';
 import type { MediaGenerationRequest } from '@/lib/media/types';
+import type { Scene } from '@/lib/types/stage';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('MediaOrchestrator');
@@ -152,6 +154,27 @@ async function generateSingleMedia(
     const objectUrl = URL.createObjectURL(blob);
     const posterObjectUrl = posterBlob ? URL.createObjectURL(posterBlob) : undefined;
     useMediaGenerationStore.getState().markDone(req.elementId, objectUrl, posterObjectUrl);
+
+    const persisted = await uploadClassroomMedia({
+      stageId,
+      elementId: req.elementId,
+      type: req.type,
+      blob,
+      poster: posterBlob,
+    }).catch((error) => {
+      log.warn(`Failed to upload ${req.elementId} for sharing:`, error);
+      return null;
+    });
+
+    if (persisted?.url) {
+      await db.mediaFiles
+        .update(mediaFileKey(stageId, req.elementId), {
+          ossKey: persisted.url,
+          posterOssKey: persisted.posterUrl,
+        })
+        .catch(() => {});
+      replaceMediaPlaceholder(stageId, req.elementId, persisted.url, persisted.posterUrl);
+    }
   } catch (err) {
     if (abortSignal?.aborted) return;
     const message = err instanceof Error ? err.message : String(err);
@@ -180,6 +203,117 @@ async function generateSingleMedia(
         })
         .catch(() => {}); // best-effort
     }
+  }
+}
+
+export async function applyStoredMediaUrlsToScene(scene: Scene): Promise<Scene> {
+  if (scene.content?.type !== 'slide') return scene;
+
+  const hasPlaceholders = scene.content.canvas.elements.some(
+    (element) =>
+      (element.type === 'image' || element.type === 'video') &&
+      typeof element.src === 'string' &&
+      /^gen_(img|vid)_[\w-]+$/i.test(element.src),
+  );
+
+  if (!hasPlaceholders) return scene;
+
+  const records = await db.mediaFiles
+    .where('stageId')
+    .equals(scene.stageId)
+    .toArray()
+    .catch(() => []);
+  const urlByElementId = new Map(
+    records
+      .map((record) => {
+        const elementId = record.id.includes(':')
+          ? record.id.split(':').slice(1).join(':')
+          : record.id;
+        return [elementId, record] as const;
+      })
+      .filter(([, record]) => !!record.ossKey),
+  );
+
+  const nextScene: Scene = structuredClone(scene);
+  if (nextScene.content.type !== 'slide') return scene;
+  let changed = false;
+  nextScene.content.canvas.elements = nextScene.content.canvas.elements.map((element) => {
+    if ((element.type !== 'image' && element.type !== 'video') || typeof element.src !== 'string') {
+      return element;
+    }
+    const record = urlByElementId.get(element.src);
+    if (!record?.ossKey) return element;
+    changed = true;
+    return element.type === 'video' && record.posterOssKey
+      ? { ...element, src: record.ossKey, poster: record.posterOssKey }
+      : { ...element, src: record.ossKey };
+  });
+
+  return changed ? nextScene : scene;
+}
+
+async function uploadClassroomMedia(params: {
+  stageId: string;
+  elementId: string;
+  type: 'image' | 'video';
+  blob: Blob;
+  poster?: Blob;
+}): Promise<{ url: string; posterUrl?: string }> {
+  const formData = new FormData();
+  formData.append('classroomId', params.stageId);
+  formData.append('elementId', params.elementId);
+  formData.append('type', params.type);
+  formData.append('file', params.blob, params.type === 'image' ? 'image.png' : 'video.mp4');
+  if (params.poster) formData.append('poster', params.poster, 'poster.jpg');
+
+  const response = await fetch('/api/classroom-media', {
+    method: 'POST',
+    body: formData,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || `Media upload failed: HTTP ${response.status}`);
+  }
+  return { url: data.url, posterUrl: data.posterUrl };
+}
+
+function replaceMediaPlaceholder(
+  stageId: string,
+  elementId: string,
+  url: string,
+  posterUrl?: string,
+): void {
+  const stageStore = useStageStore.getState();
+  const scenes = stageStore.scenes;
+  const scene = scenes.find(
+    (candidate) =>
+      candidate.stageId === stageId &&
+      candidate.content?.type === 'slide' &&
+      candidate.content.canvas.elements.some(
+        (element) =>
+          (element.type === 'image' || element.type === 'video') && element.src === elementId,
+      ),
+  );
+  if (!scene || scene.content.type !== 'slide') return;
+
+  const nextScene: Scene = structuredClone(scene);
+  if (nextScene.content.type !== 'slide') return;
+  let changed = false;
+  nextScene.content.canvas.elements = nextScene.content.canvas.elements.map((element) => {
+    if ((element.type !== 'image' && element.type !== 'video') || element.src !== elementId) {
+      return element;
+    }
+    changed = true;
+    return element.type === 'video' && posterUrl
+      ? { ...element, src: url, poster: posterUrl }
+      : { ...element, src: url };
+  });
+
+  if (changed) {
+    stageStore.updateScene(scene.id, {
+      content: nextScene.content,
+      updatedAt: Date.now(),
+    });
   }
 }
 
