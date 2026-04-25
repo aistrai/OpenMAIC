@@ -981,6 +981,73 @@ function logProxyUsageOnce(providerId: ProviderId, proxyUrl?: string): void {
   log.info(`Using proxy for provider "${providerId}": ${proxyUrl}`);
 }
 
+function isOpenRouterBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    return new URL(baseUrl).hostname.toLowerCase().endsWith('openrouter.ai');
+  } catch {
+    return baseUrl.toLowerCase().includes('openrouter.ai');
+  }
+}
+
+function normalizeOpenRouterModelId(providerId: ProviderId, modelId: string): string {
+  if (modelId.includes('/')) return modelId;
+
+  const aliases: Partial<Record<ProviderId, Record<string, string>>> = {
+    openai: {
+      'gpt-4o-mini': 'openai/gpt-4o-mini',
+      'gpt-4o': 'openai/gpt-4o',
+      'gpt-5.2': 'openai/gpt-5.2',
+      'gpt-5.1': 'openai/gpt-5.1',
+    },
+    anthropic: {
+      'claude-opus-4-6': 'anthropic/claude-opus-4.6',
+      'claude-sonnet-4-6': 'anthropic/claude-sonnet-4.6',
+      'claude-sonnet-4-5': 'anthropic/claude-sonnet-4.5',
+      'claude-haiku-4-5': 'anthropic/claude-haiku-4.5',
+    },
+    google: {
+      'gemini-3.1-pro-preview': 'google/gemini-3.1-pro-preview',
+      'gemini-3-flash-preview': 'google/gemini-3-flash-preview',
+      'gemini-2.5-flash': 'google/gemini-2.5-flash',
+      'gemini-2.5-pro': 'google/gemini-2.5-pro',
+    },
+    deepseek: {
+      'deepseek-chat': 'deepseek/deepseek-chat',
+      'deepseek-reasoner': 'deepseek/deepseek-r1',
+    },
+    qwen: {
+      'qwen3.5-flash': 'qwen/qwen3.5-flash-02-23',
+      'qwen3.5-plus': 'qwen/qwen3.5-plus-02-15',
+      'qwen3-max': 'qwen/qwen3-max',
+      'qwen3-vl-plus': 'qwen/qwen3-vl-32b-instruct',
+    },
+    kimi: {
+      'kimi-k2.5': 'moonshotai/kimi-k2.5',
+      'kimi-k2-thinking': 'moonshotai/kimi-k2-thinking',
+      'kimi-k2-0905-preview': 'moonshotai/kimi-k2-0905',
+    },
+    minimax: {
+      'MiniMax-M2.5': 'minimax/minimax-m2.5',
+      'MiniMax-M2.1': 'minimax/minimax-m2.1',
+      'MiniMax-M2': 'minimax/minimax-m2',
+    },
+    glm: {
+      'glm-5': 'z-ai/glm-5',
+      'glm-4.7': 'z-ai/glm-4.7',
+      'glm-4.7-flash': 'z-ai/glm-4.7-flash',
+      'glm-4.6v': 'z-ai/glm-4.6v',
+    },
+    doubao: {
+      'doubao-seed-2-0-lite-260215': 'bytedance-seed/seed-2.0-lite',
+      'doubao-seed-2-0-mini-260215': 'bytedance-seed/seed-2.0-mini',
+      'doubao-seed-1-8-251228': 'bytedance-seed/seed-1.6',
+    },
+  };
+
+  return aliases[providerId]?.[modelId] || modelId;
+}
+
 /**
  * Get a configured language model instance with its info
  * Accepts individual parameters for flexibility and security
@@ -1011,13 +1078,18 @@ export function getModel(config: ModelConfig): ModelWithInfo {
   // Resolve base URL: explicit > provider default > SDK default
   const provider = getProviderConfig(config.providerId);
   const effectiveBaseUrl = config.baseUrl || provider?.defaultBaseUrl || undefined;
+  const isOpenRouter = isOpenRouterBaseUrl(effectiveBaseUrl);
+  const effectiveProviderType = isOpenRouter ? 'openai' : providerType;
+  const effectiveModelId = isOpenRouter
+    ? normalizeOpenRouterModelId(config.providerId, config.modelId)
+    : config.modelId;
   const proxyUrl = resolveProxyUrl(config.proxy);
   const serverFetch = getServerFetch(proxyUrl);
   logProxyUsageOnce(config.providerId, proxyUrl);
 
   let model: LanguageModel;
 
-  switch (providerType) {
+  switch (effectiveProviderType) {
     case 'openai': {
       const openaiOptions: Parameters<typeof createOpenAI>[0] = {
         apiKey: effectiveApiKey,
@@ -1053,7 +1125,7 @@ export function getModel(config: ModelConfig): ModelWithInfo {
       }
 
       const openai = createOpenAI(openaiOptions);
-      model = openai.chat(config.modelId);
+      model = openai.chat(effectiveModelId);
       break;
     }
 
@@ -1064,7 +1136,7 @@ export function getModel(config: ModelConfig): ModelWithInfo {
       };
       if (serverFetch) anthropicOptions.fetch = serverFetch;
       const anthropic = createAnthropic(anthropicOptions);
-      model = anthropic.chat(config.modelId);
+      model = anthropic.chat(effectiveModelId);
       break;
     }
 
@@ -1075,12 +1147,12 @@ export function getModel(config: ModelConfig): ModelWithInfo {
       };
       if (serverFetch) googleOptions.fetch = serverFetch;
       const google = createGoogleGenerativeAI(googleOptions);
-      model = google.chat(config.modelId);
+      model = google.chat(effectiveModelId);
       break;
     }
 
     default:
-      throw new Error(`Unsupported provider type: ${providerType}`);
+      throw new Error(`Unsupported provider type: ${effectiveProviderType}`);
   }
 
   // Look up model info from the provider registry

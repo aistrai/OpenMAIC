@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { ProviderId } from '@/lib/ai/providers';
+import type { ModelInfo } from '@/lib/types/provider';
 import type { ProvidersConfig } from '@/lib/types/settings';
 import { PROVIDERS } from '@/lib/ai/providers';
 import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
@@ -323,6 +324,21 @@ const getDefaultWebSearchConfig = () => ({
  */
 function hasProviderId(providerMap: Record<string, unknown>, providerId?: string): boolean {
   return typeof providerId === 'string' && providerId in providerMap;
+}
+
+function mergeServerModels(currentModels: ModelInfo[], serverModels?: string[]): ModelInfo[] {
+  if (!serverModels?.length) return currentModels;
+
+  return serverModels.map((id) => {
+    const existing = currentModels.find((model) => model.id === id);
+    return (
+      existing || {
+        id,
+        name: id,
+        capabilities: { streaming: true, tools: true, vision: false },
+      }
+    );
+  });
 }
 
 /**
@@ -712,16 +728,13 @@ export const useSettingsStore = create<SettingsState>()(
                 const key = pid as ProviderId;
                 if (newProvidersConfig[key]) {
                   const currentModels = newProvidersConfig[key].models;
-                  // When server specifies allowed models, filter the models list
-                  const filteredModels = info.models?.length
-                    ? currentModels.filter((m) => info.models!.includes(m.id))
-                    : currentModels;
+                  const mergedModels = mergeServerModels(currentModels, info.models);
                   newProvidersConfig[key] = {
                     ...newProvidersConfig[key],
                     isServerConfigured: true,
                     serverModels: info.models,
                     serverBaseUrl: info.baseUrl,
-                    models: filteredModels,
+                    models: mergedModels,
                   };
                 }
               }
