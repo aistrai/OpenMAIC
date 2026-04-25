@@ -553,6 +553,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
             btn.children[0].textContent = option.value;
             btn.children[1].textContent = option.label;
             btn.onclick = () => {
+              const quizScrollTop = root.scrollTop;
               const key = quizAnswerKey(scene, question);
               if (question.type === 'multiple') {
                 const current = new Set(toArray(quizAnswers[key]));
@@ -562,7 +563,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
               } else {
                 quizAnswers[key] = option.value;
               }
-              render();
+              render({ quizScrollTop });
             };
             card.appendChild(btn);
           }
@@ -587,15 +588,16 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       btn.className = 'quiz-btn' + (revealed ? ' secondary' : '');
       btn.textContent = revealed ? 'Hide result' : 'Check answers';
       btn.onclick = () => {
+        const quizScrollTop = root.scrollTop;
         if (revealedQuizScenes.has(scene.id)) revealedQuizScenes.delete(scene.id);
         else revealedQuizScenes.add(scene.id);
-        render();
+        render({ quizScrollTop });
       };
       actions.appendChild(btn);
       root.appendChild(actions);
       return root;
     }
-    function render() {
+    function render(options = {}) {
       const scene = scenes[sceneIndex];
       renderSceneList();
       stage.innerHTML = '';
@@ -603,7 +605,13 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       sceneTitle.textContent = scene.title || 'Scene';
       positionPill.textContent = (sceneIndex + 1) + ' / ' + scenes.length;
       if (scene.content?.type === 'slide') stage.appendChild(renderSlide(scene));
-      else if (scene.content?.type === 'quiz') stage.appendChild(renderQuiz(scene));
+      else if (scene.content?.type === 'quiz') {
+        const quiz = renderQuiz(scene);
+        stage.appendChild(quiz);
+        if (typeof options.quizScrollTop === 'number') {
+          requestAnimationFrame(() => { quiz.scrollTop = options.quizScrollTop; });
+        }
+      }
       else if (scene.content?.type === 'interactive' && scene.content.url) {
         const iframe = document.createElement('iframe');
         iframe.src = scene.content.url;
