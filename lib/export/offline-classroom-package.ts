@@ -233,7 +233,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     img, video { width: 100%; height: 100%; object-fit: cover; display: block; }
     iframe { width: min(100%, 1100px); height: 100%; min-height: 420px; border: 0; border-radius: 16px; background: #fff; box-shadow: 0 18px 60px rgba(15,23,42,.18); }
     .fallback { width: min(100%, 900px); background: white; padding: 28px; border-radius: 16px; line-height: 1.6; box-shadow: 0 18px 60px rgba(15,23,42,.12); }
-    .roundtable { min-height: 0; border-top: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: grid; grid-template-columns: 132px minmax(0,1fr) 250px; gap: 14px; padding: 14px 18px; overflow: hidden; }
+    .roundtable { min-height: 0; border-top: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: grid; grid-template-columns: 132px minmax(0,1fr) auto; gap: 14px; padding: 14px 18px; overflow: hidden; }
     .teacher { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .avatar { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; color: white; font-weight: 900; background: linear-gradient(135deg, #7c3aed, #2563eb); box-shadow: 0 10px 30px rgba(79,70,229,.25); }
     .teacher-name { font-size: 12px; font-weight: 800; color: #334155; }
@@ -243,12 +243,15 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     .caption.empty { color: #94a3b8; }
     .progress-track { height: 4px; border-radius: 999px; background: #e2e8f0; overflow: hidden; flex: 0 0 auto; }
     .progress-bar { width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #7c3aed, #06b6d4); transition: width .12s linear; }
-    .controls { min-width: 0; display: grid; grid-template-columns: 44px 1fr 44px; grid-template-rows: 44px 32px; gap: 8px; align-content: center; }
-    .control { border: 0; border-radius: 14px; cursor: pointer; color: white; background: #111827; display: grid; place-items: center; box-shadow: 0 10px 26px rgba(15,23,42,.16); transition: transform .14s ease, background .14s ease; }
-    .control:hover { transform: translateY(-1px); background: #0f172a; }
-    .control.secondary { color: #334155; background: #e2e8f0; box-shadow: none; }
-    .control.wide { display: flex; gap: 8px; align-items: center; justify-content: center; font-weight: 800; }
-    .speed { grid-column: 1 / 4; border: 0; border-radius: 999px; cursor: pointer; background: #f1f5f9; color: #475569; font-size: 12px; font-weight: 800; }
+    .controls { align-self: center; min-width: 0; height: 34px; display: flex; align-items: center; gap: 3px; padding: 4px 5px; border-radius: 12px; background: rgba(255,255,255,.86); border: 1px solid rgba(15,23,42,.08); box-shadow: 0 10px 28px rgba(15,23,42,.08); }
+    .control { width: 28px; height: 26px; border: 0; border-radius: 8px; cursor: pointer; color: #64748b; background: transparent; display: grid; place-items: center; transition: transform .14s ease, background .14s ease, color .14s ease; }
+    .control:hover { background: rgba(100,116,139,.1); color: #334155; }
+    .control:active { transform: scale(.9); }
+    .control.playing { color: #7c3aed; background: rgba(124,58,237,.1); }
+    .control svg { width: 15px; height: 15px; stroke-width: 2.4; }
+    .ctrl-divider { width: 1px; height: 14px; background: rgba(203,213,225,.9); margin: 0 2px; }
+    .speed { width: 38px; height: 24px; border: 0; border-radius: 7px; cursor: pointer; background: transparent; color: #64748b; font-size: 11px; font-weight: 800; line-height: 1; }
+    .speed:hover, .speed.active { color: #7c3aed; background: rgba(124,58,237,.1); }
     @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.4); opacity: .58; } }
     @media (max-width: 820px) {
       .shell { grid-template-columns: 1fr; grid-template-rows: 112px minmax(0,1fr); }
@@ -259,7 +262,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       .main { grid-template-rows: 48px minmax(0,1fr) 190px; }
       .roundtable { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr) auto; gap: 8px; padding: 10px; }
       .teacher { display: none; }
-      .controls { grid-template-columns: 44px 1fr 44px; }
+      .controls { justify-content: center; }
     }
   </style>
 </head>
@@ -294,10 +297,17 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
           <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
         </div>
         <div class="controls">
-          <button class="control secondary" id="prevBtn" title="Previous">Prev</button>
-          <button class="control wide" id="playBtn">Play</button>
-          <button class="control secondary" id="nextBtn" title="Next">Next</button>
-          <button class="speed" id="speedBtn">Speed 1x</button>
+          <button class="speed" id="speedBtn" title="Playback speed">1x</button>
+          <span class="ctrl-divider"></span>
+          <button class="control" id="prevBtn" title="Previous" aria-label="Previous">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <button class="control" id="playBtn" title="Play" aria-label="Play">
+            <span id="playIcon"></span>
+          </button>
+          <button class="control" id="nextBtn" title="Next" aria-label="Next">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 18l6-6-6-6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </div>
     </main>
@@ -320,6 +330,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     const stage = document.getElementById('stage');
     const caption = document.getElementById('caption');
     const playBtn = document.getElementById('playBtn');
+    const playIcon = document.getElementById('playIcon');
     const sceneTitle = document.getElementById('sceneTitle');
     const positionPill = document.getElementById('positionPill');
     const teacherState = document.getElementById('teacherState');
@@ -330,10 +341,20 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
     function px(value) { return typeof value === 'number' ? value + 'px' : value || '0px'; }
     function sceneTypeLabel(scene) { return scene?.content?.type || scene?.type || 'scene'; }
+    function icon(name) {
+      if (name === 'pause') return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.75A1.75 1.75 0 0 1 9.75 4h.5A1.75 1.75 0 0 1 12 5.75v12.5A1.75 1.75 0 0 1 10.25 20h-.5A1.75 1.75 0 0 1 8 18.25V5.75Zm4 0A1.75 1.75 0 0 1 13.75 4h.5A1.75 1.75 0 0 1 16 5.75v12.5A1.75 1.75 0 0 1 14.25 20h-.5A1.75 1.75 0 0 1 12 18.25V5.75Z"/></svg>';
+      if (name === 'replay') return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4v6h6" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.2 14.5A7.5 7.5 0 1 0 6.1 8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      return '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.6v12.8c0 .9 1 1.45 1.76.96l9.6-6.4a1.15 1.15 0 0 0 0-1.92l-9.6-6.4A1.15 1.15 0 0 0 8 5.6Z"/></svg>';
+    }
     function updateControls() {
-      playBtn.textContent = status === 'playing' ? 'Pause' : status === 'paused' ? 'Resume' : status === 'completed' ? 'Replay' : 'Play';
+      const isPlaying = status === 'playing';
+      playIcon.innerHTML = isPlaying ? icon('pause') : status === 'completed' ? icon('replay') : icon('play');
+      playBtn.classList.toggle('playing', isPlaying);
+      playBtn.title = isPlaying ? 'Pause' : status === 'completed' ? 'Replay' : 'Play';
+      playBtn.setAttribute('aria-label', playBtn.title);
       teacherState.textContent = status === 'playing' ? 'Speaking' : status === 'paused' ? 'Paused' : status === 'completed' ? 'Completed' : 'Ready';
-      speedBtn.textContent = 'Speed ' + playbackRate + 'x';
+      speedBtn.textContent = playbackRate + 'x';
+      speedBtn.classList.toggle('active', playbackRate !== 1);
     }
     function renderSceneList() {
       sceneList.innerHTML = '';
