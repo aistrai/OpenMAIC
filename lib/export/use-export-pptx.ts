@@ -23,6 +23,10 @@ import { type AST, toAST } from '@/lib/export/html-parser';
 import { type SvgPoints, toPoints, getSvgPathRange } from '@/lib/export/svg-path-parser';
 import { svg2Base64 } from '@/lib/export/svg2base64';
 import { latexToOmml } from '@/lib/export/latex-to-omml';
+import {
+  buildOfflineClassroomPackage,
+  safeExportFileName,
+} from '@/lib/export/offline-classroom-package';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('ExportPPTX');
@@ -1130,52 +1134,21 @@ export function useExportPPTX() {
     t,
   ]);
 
-  // ── Export Resource Pack (PPTX + interactive HTML pages as ZIP) ──
+  // ── Export Resource Pack (offline classroom with audio/media) ──
   const exportResourcePack = useCallback(() => {
     withExportGuard(async () => {
+      if (!stage) return;
+
       const JSZip = (await import('jszip')).default;
       const zip = new JSZip();
-      const fileName = stage?.name || 'slides';
+      const fileName = safeExportFileName(stage.name || 'classroom', 'classroom');
 
-      // 1. Generate PPTX
-      const pptxBlob = await buildPptxBlob(
-        slides,
-        slideScenes,
-        viewportRatio,
-        viewportSize,
-        ratioPx2Inch,
-        ratioPx2Pt,
-      );
-      zip.file(`${fileName}.pptx`, pptxBlob);
-
-      // 2. Add interactive HTML pages
-      let interactiveIndex = 0;
-      for (const scene of scenes) {
-        if (scene.content.type === 'interactive' && scene.content.html) {
-          interactiveIndex++;
-          const safeName = scene.title.replace(/[\\/:*?"<>|]/g, '_');
-          const htmlFileName = `interactive/${String(interactiveIndex).padStart(2, '0')}_${safeName}.html`;
-          zip.file(htmlFileName, scene.content.html);
-        }
-      }
-
-      // 3. Download ZIP
+      await buildOfflineClassroomPackage(zip, stage, scenes);
       const zipBlob = await zip.generateAsync({ type: 'blob' });
-      saveAs(zipBlob, `${fileName}.zip`);
+      saveAs(zipBlob, `${fileName}-classroom-package.zip`);
       toast.success(t('export.exportSuccess'));
     });
-  }, [
-    withExportGuard,
-    slides,
-    slideScenes,
-    scenes,
-    stage,
-    viewportSize,
-    viewportRatio,
-    ratioPx2Inch,
-    ratioPx2Pt,
-    t,
-  ]);
+  }, [withExportGuard, scenes, stage, t]);
 
   return { exporting, exportPPTX, exportResourcePack };
 }

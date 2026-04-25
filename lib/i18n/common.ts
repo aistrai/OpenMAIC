@@ -32,7 +32,7 @@ export const commonZhCN = {
   export: {
     pptx: '导出 PPTX',
     resourcePack: '导出教学资源包',
-    resourcePackDesc: 'PPTX + 交互式页面',
+    resourcePackDesc: '离线课堂包，包含音频',
     exporting: '正在导出...',
     exportSuccess: '导出成功',
     exportFailed: '导出失败',
@@ -73,7 +73,7 @@ export const commonEnUS = {
   export: {
     pptx: 'Export PPTX',
     resourcePack: 'Export Resource Pack',
-    resourcePackDesc: 'PPTX + interactive pages',
+    resourcePackDesc: 'Offline classroom with audio',
     exporting: 'Exporting...',
     exportSuccess: 'Export successful',
     exportFailed: 'Export failed',
