@@ -233,6 +233,27 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     img, video { width: 100%; height: 100%; object-fit: cover; display: block; }
     iframe { width: min(100%, 1100px); height: 100%; min-height: 420px; border: 0; border-radius: 16px; background: #fff; box-shadow: 0 18px 60px rgba(15,23,42,.18); }
     .fallback { width: min(100%, 900px); background: white; padding: 28px; border-radius: 16px; line-height: 1.6; box-shadow: 0 18px 60px rgba(15,23,42,.12); }
+    .quiz { width: min(100%, 980px); height: 100%; overflow: auto; border-radius: 18px; background: white; box-shadow: 0 18px 60px rgba(15,23,42,.14); padding: 22px; }
+    .quiz-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .quiz h2 { margin: 0; font-size: 22px; color: #111827; }
+    .quiz-sub { margin-top: 4px; color: #64748b; font-size: 13px; }
+    .quiz-score { flex: 0 0 auto; border-radius: 999px; background: #f3e8ff; color: #6d28d9; font-size: 12px; font-weight: 800; padding: 7px 10px; }
+    .q-card { border: 1px solid rgba(15,23,42,.08); background: #f8fafc; border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+    .q-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; color: #64748b; font-size: 12px; font-weight: 800; }
+    .q-type { border-radius: 999px; background: white; border: 1px solid rgba(15,23,42,.08); padding: 3px 8px; }
+    .q-title { font-size: 15px; line-height: 1.6; font-weight: 700; color: #1e293b; margin-bottom: 12px; white-space: pre-wrap; }
+    .option { width: 100%; border: 1px solid rgba(15,23,42,.08); background: white; color: #334155; border-radius: 12px; padding: 10px 12px; margin-top: 8px; text-align: left; cursor: pointer; display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 8px; align-items: start; transition: border .15s ease, background .15s ease, transform .15s ease; }
+    .option:hover { border-color: rgba(124,58,237,.35); background: #faf5ff; }
+    .option.selected { border-color: rgba(124,58,237,.55); background: #f3e8ff; color: #5b21b6; }
+    .option.correct { border-color: rgba(34,197,94,.55); background: #ecfdf5; color: #166534; }
+    .option.incorrect { border-color: rgba(239,68,68,.45); background: #fef2f2; color: #991b1b; }
+    .opt-key { font-weight: 900; color: inherit; }
+    .short-answer { width: 100%; min-height: 86px; resize: vertical; border-radius: 12px; border: 1px solid rgba(15,23,42,.1); background: white; padding: 11px 12px; font: inherit; color: #334155; outline: none; }
+    .short-answer:focus { border-color: rgba(124,58,237,.55); box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+    .analysis { margin-top: 12px; border-radius: 12px; background: #fff7ed; color: #9a3412; padding: 10px 12px; font-size: 13px; line-height: 1.55; white-space: pre-wrap; }
+    .quiz-actions { position: sticky; bottom: -22px; display: flex; justify-content: flex-end; padding-top: 12px; background: linear-gradient(to top, white 70%, rgba(255,255,255,0)); }
+    .quiz-btn { border: 0; border-radius: 999px; background: #111827; color: white; padding: 10px 16px; font-weight: 800; cursor: pointer; box-shadow: 0 10px 26px rgba(15,23,42,.16); }
+    .quiz-btn.secondary { background: #e2e8f0; color: #334155; box-shadow: none; }
     .roundtable { min-height: 0; border-top: 1px solid rgba(15,23,42,.08); background: rgba(255,255,255,.82); backdrop-filter: blur(18px); display: grid; grid-template-columns: 132px minmax(0,1fr) auto; gap: 14px; padding: 14px 18px; overflow: hidden; }
     .teacher { display: flex; align-items: center; gap: 10px; min-width: 0; }
     .avatar { width: 48px; height: 48px; border-radius: 18px; display: grid; place-items: center; color: white; font-weight: 900; background: linear-gradient(135deg, #7c3aed, #2563eb); box-shadow: 0 10px 30px rgba(79,70,229,.25); }
@@ -324,6 +345,8 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
     let playbackRate = 1;
     let activeFocusElementId = null;
     let activeFocusType = null;
+    const quizAnswers = {};
+    const revealedQuizScenes = new Set();
     const title = document.getElementById('title');
     const desc = document.getElementById('desc');
     const sceneList = document.getElementById('sceneList');
@@ -436,6 +459,142 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       frame.appendChild(slide);
       return frame;
     }
+    function toArray(value) {
+      if (!value) return [];
+      return Array.isArray(value) ? value : [value];
+    }
+    function arraysEqual(a, b) {
+      if (a.length !== b.length) return false;
+      const left = [...a].sort();
+      const right = [...b].sort();
+      return left.every((value, index) => value === right[index]);
+    }
+    function quizAnswerKey(scene, question) {
+      return scene.id + '::' + question.id;
+    }
+    function getQuizAnswer(scene, question) {
+      const answer = quizAnswers[quizAnswerKey(scene, question)];
+      return question.type === 'multiple' ? toArray(answer) : answer || '';
+    }
+    function isShortAnswer(question) {
+      return question.type === 'short_answer' || (!question.hasAnswer && toArray(question.answer).length === 0);
+    }
+    function questionTypeLabel(question) {
+      if (question.type === 'multiple') return 'Multiple';
+      if (isShortAnswer(question)) return 'Short answer';
+      return 'Single';
+    }
+    function renderQuiz(scene) {
+      const questions = scene.content?.questions || [];
+      const revealed = revealedQuizScenes.has(scene.id);
+      const root = document.createElement('div');
+      root.className = 'quiz';
+
+      let total = 0;
+      let earned = 0;
+      for (const question of questions) {
+        const points = question.points || 1;
+        total += points;
+        if (!isShortAnswer(question)) {
+          const answer = toArray(getQuizAnswer(scene, question));
+          if (arraysEqual(answer, toArray(question.answer))) earned += points;
+        }
+      }
+
+      const head = document.createElement('div');
+      head.className = 'quiz-head';
+      const intro = document.createElement('div');
+      const h2 = document.createElement('h2');
+      h2.textContent = scene.title || 'Quiz';
+      const sub = document.createElement('div');
+      sub.className = 'quiz-sub';
+      sub.textContent = questions.length + ' question' + (questions.length === 1 ? '' : 's');
+      intro.appendChild(h2);
+      intro.appendChild(sub);
+      const score = document.createElement('div');
+      score.className = 'quiz-score';
+      score.textContent = revealed ? 'Score ' + earned + ' / ' + total : 'Quiz';
+      head.appendChild(intro);
+      head.appendChild(score);
+      root.appendChild(head);
+
+      questions.forEach((question, index) => {
+        const card = document.createElement('div');
+        card.className = 'q-card';
+        const meta = document.createElement('div');
+        meta.className = 'q-meta';
+        meta.innerHTML = '<span>Q' + (index + 1) + '</span><span class="q-type">' + questionTypeLabel(question) + '</span>';
+        const title = document.createElement('div');
+        title.className = 'q-title';
+        title.textContent = question.question || '';
+        card.appendChild(meta);
+        card.appendChild(title);
+
+        if (isShortAnswer(question)) {
+          const textarea = document.createElement('textarea');
+          textarea.className = 'short-answer';
+          textarea.placeholder = 'Write your answer here...';
+          textarea.value = getQuizAnswer(scene, question);
+          textarea.oninput = () => {
+            quizAnswers[quizAnswerKey(scene, question)] = textarea.value;
+          };
+          card.appendChild(textarea);
+        } else {
+          const selected = toArray(getQuizAnswer(scene, question));
+          for (const option of question.options || []) {
+            const btn = document.createElement('button');
+            const isSelected = selected.includes(option.value);
+            const isCorrectOption = toArray(question.answer).includes(option.value);
+            btn.className = 'option' +
+              (isSelected ? ' selected' : '') +
+              (revealed && isCorrectOption ? ' correct' : '') +
+              (revealed && isSelected && !isCorrectOption ? ' incorrect' : '');
+            btn.innerHTML = '<span class="opt-key"></span><span></span>';
+            btn.children[0].textContent = option.value;
+            btn.children[1].textContent = option.label;
+            btn.onclick = () => {
+              const key = quizAnswerKey(scene, question);
+              if (question.type === 'multiple') {
+                const current = new Set(toArray(quizAnswers[key]));
+                if (current.has(option.value)) current.delete(option.value);
+                else current.add(option.value);
+                quizAnswers[key] = [...current];
+              } else {
+                quizAnswers[key] = option.value;
+              }
+              render();
+            };
+            card.appendChild(btn);
+          }
+        }
+
+        if (revealed) {
+          const analysis = document.createElement('div');
+          analysis.className = 'analysis';
+          const answerText = toArray(question.answer).join(', ');
+          analysis.textContent =
+            (answerText ? 'Answer: ' + answerText + '\\n' : '') +
+            (question.analysis || 'No analysis provided.');
+          card.appendChild(analysis);
+        }
+
+        root.appendChild(card);
+      });
+
+      const actions = document.createElement('div');
+      actions.className = 'quiz-actions';
+      const btn = document.createElement('button');
+      btn.className = 'quiz-btn' + (revealed ? ' secondary' : '');
+      btn.textContent = revealed ? 'Hide result' : 'Check answers';
+      btn.onclick = () => {
+        if (revealedQuizScenes.has(scene.id)) revealedQuizScenes.delete(scene.id);
+        else revealedQuizScenes.add(scene.id);
+        render();
+      };
+      actions.appendChild(btn);
+      root.appendChild(actions);
+      return root;
+    }
     function render() {
       const scene = scenes[sceneIndex];
       renderSceneList();
@@ -444,6 +603,7 @@ function buildOfflinePlayerHtml(classroom: ExportClassroom): string {
       sceneTitle.textContent = scene.title || 'Scene';
       positionPill.textContent = (sceneIndex + 1) + ' / ' + scenes.length;
       if (scene.content?.type === 'slide') stage.appendChild(renderSlide(scene));
+      else if (scene.content?.type === 'quiz') stage.appendChild(renderQuiz(scene));
       else if (scene.content?.type === 'interactive' && scene.content.url) {
         const iframe = document.createElement('iframe');
         iframe.src = scene.content.url;
